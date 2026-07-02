@@ -1,0 +1,28 @@
+{{- $full := include "krci-audit.fullname" . -}}
+{{- if .Values.tls.createSelfSignedIssuer }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.tls.issuerRef.name }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $full }}-serving-cert
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  # cert-manager writes the serving cert here; kube-audit-rest mounts it, and the CA is
+  # injected into the webhook's caBundle via the inject-ca-from annotation.
+  secretName: {{ include "krci-audit.certSecretName" . }}
+  dnsNames:
+    - {{ printf "%s.%s.svc" $full .Release.Namespace }}
+    - {{ printf "%s.%s.svc.cluster.local" $full .Release.Namespace }}
+  issuerRef:
+    name: {{ .Values.tls.issuerRef.name }}
+    kind: {{ .Values.tls.issuerRef.kind }}

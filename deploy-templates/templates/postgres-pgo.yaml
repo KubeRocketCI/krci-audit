@@ -1,0 +1,42 @@
+{{- if eq .Values.db.mode "pgo" }}
+{{- $cluster := include "krci-audit.pgoClusterName" . -}}
+# Crunchydata PostgresCluster (requires the postgres-operator add-on). The operator creates
+# the schema-owner login role named after the cluster and writes its credentials to the
+# Secret <cluster>-pguser-<cluster>. The least-privilege audit_writer role is created and
+# granted by the migration Job, keeping its INSERT/SELECT-only contract identical across modes.
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: {{ $cluster }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  image: {{ .Values.db.pgo.image | quote }}
+  postgresVersion: {{ .Values.db.pgo.postgresVersion }}
+  users:
+    - name: {{ $cluster }}
+      databases:
+        - {{ .Values.db.name }}
+      options: "SUPERUSER"
+  instances:
+    - name: instance
+      replicas: {{ .Values.db.pgo.replicas }}
+      dataVolumeClaimSpec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.db.pgo.storage | quote }}
+  {{- if .Values.db.pgo.backups.enabled }}
+  backups:
+    pgbackrest:
+      image: {{ .Values.db.pgo.backups.image | quote }}
+      repos:
+        - name: repo1
+          volume:
+            volumeClaimSpec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: {{ .Values.db.pgo.backups.storage | quote }}
+  {{- end }}
+{{- end }}

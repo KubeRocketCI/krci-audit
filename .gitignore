@@ -1,0 +1,18 @@
+# Binaries
+/bin
+/dist
+*.exe
+*.test
+
+# Coverage
+*.out
+
+# Dependency / workspace
+go.work
+go.work.sum
+
+# env
+.env
+
+# Claude Code
+.claude/settings.local.json

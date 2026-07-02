@@ -1,0 +1,24 @@
+apiVersion: v2
+description: A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit capture & store
+home: https://docs.kuberocketci.io/
+name: krci-audit
+type: application
+version: 0.1.0-SNAPSHOT
+appVersion: 0.1.0-SNAPSHOT
+icon: https://docs.kuberocketci.io/img/logo.svg
+keywords:
+  - edp
+  - kubernetes
+  - kuberocketci
+  - audit
+maintainers:
+  - name: epmd-edp
+    email: SupportEPMD-EDP@epam.com
+    url: https://solutionshub.epam.com/solution/kuberocketci
+sources:
+  - https://github.com/KubeRocketCI/krci-audit
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: KubeRocketCI Documentation
+      url: https://docs.kuberocketci.io

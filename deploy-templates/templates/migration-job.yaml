@@ -1,0 +1,93 @@
+{{- if .Values.migration.enabled }}
+{{- $full := include "krci-audit.fullname" . -}}
+{{- $owner := include "krci-audit.ownerSecretName" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $full }}-migrate
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+  annotations:
+    # Runs after the DB provisioning resources (pgo/simple) are created. The initContainer
+    # waits for the DB to accept connections and for the owner Secret to materialize (the pgo
+    # operator writes it asynchronously). Idempotent (golang-migrate).
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        {{- include "krci-audit.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "krci-audit.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+      initContainers:
+        - name: wait-for-db
+          image: {{ .Values.db.simple.image | quote }}
+          command:
+            - sh
+            - -c
+            - |
+              until [ -f /owner/{{ .Values.db.owner.passwordKey }} ]; do echo "waiting for owner secret"; sleep 2; done
+              # -U is required because this container runs as a uid absent from /etc/passwd;
+              # pg_isready otherwise cannot derive a default user and reports "no attempt".
+              until pg_isready -h "{{ include "krci-audit.dbHost" . }}" -p "{{ .Values.db.port }}" -U "{{ .Values.db.name }}"; do echo "waiting for postgres"; sleep 2; done
+          volumeMounts:
+            - name: owner
+              mountPath: /owner
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      containers:
+        - name: migrate
+          image: "{{ .Values.images.migrate.repository }}:{{ .Values.images.migrate.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.images.migrate.pullPolicy }}
+          args: ["-direction", "up"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532        # distroless:nonroot USER is non-numeric; set explicitly
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: PGHOST
+              value: {{ include "krci-audit.dbHost" . | quote }}
+            - name: PGPORT
+              value: {{ .Values.db.port | quote }}
+            - name: PGDATABASE
+              value: {{ .Values.db.name | quote }}
+            - name: PGSSLMODE
+              value: {{ .Values.db.sslmode | quote }}
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $owner }}
+                  key: {{ .Values.db.owner.userKey }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $owner }}
+                  key: {{ .Values.db.owner.passwordKey }}
+            # Applied to the audit_writer role so Vector can log in (all modes).
+            - name: AUDIT_WRITER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "krci-audit.writerSecretName" . }}
+                  key: {{ .Values.db.writer.passwordKey }}
+      volumes:
+        - name: owner
+          secret:
+            secretName: {{ $owner }}
+            optional: true
+{{- end }}

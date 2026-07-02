@@ -1,0 +1,129 @@
+{{- $full := include "krci-audit.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "krci-audit.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "krci-audit.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "krci-audit.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      # Shared uid so Vector can read the 0600 lumberjack log written by kube-audit-rest.
+      securityContext:
+        runAsUser: {{ .Values.sharedUID }}
+        runAsGroup: {{ .Values.sharedUID }}
+        fsGroup: {{ .Values.sharedUID }}
+      containers:
+        - name: kube-audit-rest
+          image: "{{ .Values.images.kubeAuditRest.repository }}:{{ .Values.images.kubeAuditRest.tag }}"
+          imagePullPolicy: {{ .Values.images.kubeAuditRest.pullPolicy }}
+          ports:
+            - name: https
+              containerPort: 9090
+              protocol: TCP
+            - name: metrics
+              containerPort: 55555
+              protocol: TCP
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/tls
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.resources.kubeAuditRest | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        - name: vector
+          image: "{{ .Values.images.vector.repository }}:{{ .Values.images.vector.tag }}"
+          imagePullPolicy: {{ .Values.images.vector.pullPolicy }}
+          args: ["--config", "/etc/vector/vector.yaml"]
+          env:
+            # Writer connection (audit_writer). host/port/db/sslmode are known from db.mode;
+            # only the password comes from a Secret.
+            - name: PG_HOST
+              value: {{ include "krci-audit.dbHost" . | quote }}
+            - name: PG_PORT
+              value: {{ .Values.db.port | quote }}
+            - name: PG_DB
+              value: {{ .Values.db.name | quote }}
+            - name: PG_SSLMODE
+              value: {{ .Values.db.sslmode | quote }}
+            - name: PG_USER
+              value: "audit_writer"
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "krci-audit.writerSecretName" . }}
+                  key: {{ .Values.db.writer.passwordKey }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+              readOnly: true
+            - name: vector-config
+              mountPath: /etc/vector/
+              readOnly: true
+            - name: vector-data
+              mountPath: /vector-data-dir
+          resources:
+            {{- toYaml .Values.resources.vector | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ include "krci-audit.certSecretName" . }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: vector-config
+          configMap:
+            name: {{ $full }}-vector
+        - name: vector-data
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

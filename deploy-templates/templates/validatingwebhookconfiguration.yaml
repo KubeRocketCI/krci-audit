@@ -1,0 +1,32 @@
+{{- $full := include "krci-audit.fullname" . -}}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ $full }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+  annotations:
+    # cert-manager injects the CA of the serving cert into every webhook's caBundle.
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s-serving-cert" .Release.Namespace $full }}
+webhooks:
+  - name: {{ printf "%s.%s.svc" $full .Release.Namespace }}
+    # Never block platform mutations if auditing is down (availability over completeness).
+    failurePolicy: {{ .Values.capture.failurePolicy }}
+    timeoutSeconds: {{ .Values.capture.timeoutSeconds }}
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      service:
+        name: {{ $full }}
+        namespace: {{ .Release.Namespace }}
+        path: "/log-request"
+    rules:
+      {{- range .Values.capture.rules }}
+      - operations: {{ toYaml $.Values.capture.operations | nindent 10 }}
+        apiGroups: {{ toYaml .apiGroups | nindent 10 }}
+        apiVersions: {{ toYaml .apiVersions | nindent 10 }}
+        resources: {{ toYaml .resources | nindent 10 }}
+        {{- if .scope }}
+        scope: {{ .scope | quote }}
+        {{- end }}
+      {{- end }}

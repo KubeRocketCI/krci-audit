@@ -1,0 +1,20 @@
+{{- $full := include "krci-audit.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "krci-audit.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: https
+    - name: metrics
+      port: 55555
+      protocol: TCP
+      targetPort: metrics

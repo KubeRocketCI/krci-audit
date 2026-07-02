@@ -1,0 +1,119 @@
+{{- $full := include "krci-audit.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-vector
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+data:
+  vector.yaml: |
+    # Tail the kube-audit-rest log -> parse the AdmissionReview -> filter to the configured
+    # stored set -> reshape into the audit_events columns -> insert into Postgres.
+    # The postgres sink uses jsonb_populate_record, so field names MUST equal table columns
+    # and there is NO surrogate id. batch.max_events=1 so a rare dedup no-op can't fail a batch.
+    data_dir: /vector-data-dir
+    sources:
+      audit-files:
+        type: file
+        include:
+          - /tmp/*.log
+    transforms:
+      parse:
+        type: remap
+        inputs: [audit-files]
+        source: |-
+          . = parse_json!(.message)
+      filter:
+        type: filter
+        inputs: [parse]
+        condition:
+          type: vrl
+          source: |-
+            stored = false
+            {{- range .Values.capture.filter.groups }}
+            if .request.resource.group == {{ . | quote }} { stored = true }
+            {{- end }}
+            {{- range .Values.capture.filter.groupResources }}
+            if .request.resource.group == {{ .group | quote }} && .request.resource.resource == {{ .resource | quote }} { stored = true }
+            {{- end }}
+            # Subresource policy: spec-level only unless explicitly included.
+            if .request.subResource != null && .request.subResource != "" {
+              sub_ok = false
+              {{- range .Values.capture.includeSubresources }}
+              if .request.subResource == {{ . | quote }} { sub_ok = true }
+              {{- end }}
+              if !sub_ok { stored = false }
+            }
+            stored
+      shape:
+        type: remap
+        inputs: [filter]
+        source: |-
+          raw_payload = null
+          {{- if .Values.capture.storeRaw }}
+          raw_payload = .
+          {{- end }}
+          # name: request.name, else object/oldObject metadata.name (generateName/DELETE).
+          name = .request.name
+          if name == null || name == "" { name = .request.object.metadata.name }
+          if name == null || name == "" { name = .request.oldObject.metadata.name }
+          if name == null { name = "" }
+          # object_uid: present on object (CREATE/UPDATE) or oldObject (DELETE).
+          object_uid = .request.object.metadata.uid
+          if object_uid == null { object_uid = .request.oldObject.metadata.uid }
+          # timestamp: apiserver creationTimestamp on CREATE, else webhook receipt time.
+          received_at = .requestReceivedTimestamp
+          if .request.operation == "CREATE" && .request.object.metadata.creationTimestamp != null {
+            received_at = .request.object.metadata.creationTimestamp
+          }
+          api_group = .request.resource.group
+          if api_group == null { api_group = "" }
+          namespace = .request.namespace
+          if namespace == null { namespace = "" }
+          # Object bodies: configurable capture level.
+          obj = null
+          old_obj = null
+          if .request.object != null {
+          {{- if eq .Values.capture.level "full" }}
+            obj = .request.object
+          {{- else }}
+            obj = { "apiVersion": .request.object.apiVersion, "kind": .request.object.kind, "metadata": .request.object.metadata }
+          {{- end }}
+          }
+          if .request.oldObject != null {
+          {{- if eq .Values.capture.level "full" }}
+            old_obj = .request.oldObject
+          {{- else }}
+            old_obj = { "apiVersion": .request.oldObject.apiVersion, "kind": .request.oldObject.kind, "metadata": .request.oldObject.metadata }
+          {{- end }}
+          }
+          . = {
+            "event_uid":    .request.uid,
+            "received_at":  received_at,
+            "operation":    .request.operation,
+            "api_group":    api_group,
+            "api_version":  .request.resource.version,
+            "resource":     .request.resource.resource,
+            "kind":         .request.kind.kind,
+            "sub_resource": .request.subResource,
+            "namespace":    namespace,
+            "name":         name,
+            "object_uid":   object_uid,
+            "username":     .request.userInfo.username,
+            "user_groups":  .request.userInfo.groups,
+            "user_extra":   .request.userInfo.extra,
+            "dry_run":      .request.dryRun,
+            "object":       obj,
+            "old_object":   old_obj,
+            "raw":          raw_payload
+          }
+    sinks:
+      audit-postgres:
+        type: postgres
+        inputs: [shape]
+        # Connect as the least-privilege audit_writer. Discrete vars (wired per db.mode) are
+        # composed here so the same config serves external/pgo/simple.
+        endpoint: "postgres://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DB}?sslmode=${PG_SSLMODE}"
+        table: audit_events
+        batch:
+          max_events: 1

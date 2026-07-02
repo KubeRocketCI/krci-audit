@@ -1,0 +1,115 @@
+{{- if eq .Values.db.mode "simple" }}
+{{- $name := printf "%s-db" (include "krci-audit.fullname" .) -}}
+{{- $pw := include "krci-audit.persistedPassword" (dict "root" . "secretName" $name "key" .Values.db.owner.passwordKey "explicit" .Values.db.owner.password) -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/resource-policy": keep
+type: Opaque
+stringData:
+  {{ .Values.db.owner.userKey }}: {{ .Values.db.name | quote }}
+  {{ .Values.db.owner.passwordKey }}: {{ $pw | quote }}
+  dbname: {{ .Values.db.name | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: database
+    {{- include "krci-audit.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.db.port }}
+      targetPort: postgres
+{{- if .Values.db.simple.persistence }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.db.simple.storage | quote }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: database
+      {{- include "krci-audit.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: database
+        {{- include "krci-audit.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsUser: 999          # postgres image uid
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: {{ .Values.db.simple.image | quote }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.db.port }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: {{ .Values.db.owner.userKey }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: {{ .Values.db.owner.passwordKey }}
+            - name: POSTGRES_DB
+              value: {{ .Values.db.name | quote }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.db.name }}", "-d", "{{ .Values.db.name }}"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.db.simple.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+        {{- if .Values.db.simple.persistence }}
+          persistentVolumeClaim:
+            claimName: {{ $name }}
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+{{- end }}

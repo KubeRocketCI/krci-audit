@@ -1,0 +1,159 @@
+# Default values for krci-audit.
+# The component is self-contained: kube-audit-rest (capture) + Vector (ship) + a migration
+# Job for its own PostgreSQL schema. It never blocks platform operations.
+
+nameOverride: "krci-audit"
+fullnameOverride: "krci-audit"
+
+replicaCount: 1
+
+imagePullSecrets: []
+
+images:
+  # kube-audit-rest: the ValidatingWebhook that logs the raw AdmissionReview. Pin by digest.
+  kubeAuditRest:
+    repository: ghcr.io/richardoc/kube-audit-rest
+    tag: "ad68f71978e8cd610b5b06769fab301cf9ee74d0-distroless@sha256:2444c1207156681c4ed04e7bb02662820c9bfb31b50e8fe5b0112b3f8f577d42"
+    pullPolicy: IfNotPresent
+  # Vector: tails the log and writes to Postgres. >=0.46 for the postgres sink; >=0.53 for TLS.
+  vector:
+    repository: docker.io/timberio/vector
+    tag: "0.56.0-distroless-static"
+    pullPolicy: IfNotPresent
+  # krci-audit-migrate: applies the schema migrations (schema-owner role).
+  migrate:
+    repository: epamedp/krci-audit-migrate
+    tag: ""          # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+
+# Both containers must share a uid: kube-audit-rest (lumberjack) writes the log file mode
+# 0600 and the Vector sidecar reads it from the shared volume.
+sharedUID: 255999
+
+# Capture configuration. The webhook is wildcard-capable; the Vector `filter` selects which
+# events are STORED, and can be changed at any time (edit values + `helm upgrade`) with no
+# code change or rebuild. Defaults select KubeRocketCI objects.
+capture:
+  failurePolicy: Ignore   # never block platform mutations if auditing is down
+  timeoutSeconds: 1
+  operations: ["CREATE", "UPDATE", "DELETE"]
+  # Webhook rules registered with the API server (which admissions are sent to us).
+  rules:
+    - apiGroups: ["v2.edp.epam.com"]
+      apiVersions: ["*"]
+      resources: ["*"]
+      scope: "*"
+    - apiGroups: ["tekton.dev"]
+      apiVersions: ["*"]
+      resources: ["pipelineruns"]
+      scope: "Namespaced"
+  # Vector store filter (which of the received events are persisted). Default = KRCI objects.
+  filter:
+    # Store any event whose request.resource.group is in this list.
+    groups:
+      - "v2.edp.epam.com"
+    # Store events matching a specific group+resource.
+    groupResources:
+      - group: "tekton.dev"
+        resource: "pipelineruns"
+  # Subresource policy: spec-level only by default. status/scale churn is dropped unless the
+  # subresource name is listed here (and a matching <resource>/<sub> webhook rule is added).
+  includeSubresources: []
+  # Object body capture level: "metadata" (default; bounds size/PII) or "full".
+  level: metadata
+  # Store the whole raw AdmissionReview payload for replay fidelity (off by default).
+  storeRaw: false
+
+db:
+  # Provisioning mode — choose how PostgreSQL is supplied:
+  #   external — bring your own DB (nothing is provisioned; set db.host + db.owner.secretName)
+  #   pgo      — provision a Crunchydata PostgresCluster (requires the postgres-operator add-on)
+  #   simple   — provision a single plain PostgreSQL Deployment (dev / small installs)
+  mode: external
+
+  # Logical database. For pgo/simple the chart provisions this DB; host/port default to the
+  # provisioned instance and rarely need overriding. For external, set host (name/port too).
+  host: ""            # required for external
+  port: 5432
+  name: krci-audit
+  sslmode: disable
+
+  # Schema-owner role used by the migration Job (creates/owns the schema). Keys default to
+  # user/password (matches Crunchydata pguser Secrets and the simple-mode Secret).
+  owner:
+    secretName: ""    # external only; pgo/simple derive it automatically
+    userKey: user
+    passwordKey: password
+    password: ""      # simple mode only: inline owner password (dev); empty ⇒ generated + kept
+
+  # Least-privilege writer (audit_writer) used by Vector. Its LOGIN password is applied by the
+  # migration Job. Provide a password (or an existing Secret); if neither is set the chart
+  # generates one and preserves it across upgrades.
+  writer:
+    secretName: ""    # if set, read the password from here (key = writer.passwordKey)
+    passwordKey: password
+    password: ""      # inline (dev only); empty ⇒ generated + kept
+
+  # pgo mode (Crunchydata postgres-operator). Provisions a PostgresCluster + owner user.
+  pgo:
+    postgresVersion: 16
+    image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi8-16.4-0
+    replicas: 1
+    storage: 2Gi
+    backups:
+      enabled: true
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.51-0
+      storage: 2Gi
+
+  # simple mode. A single PostgreSQL Deployment (no HA, no backups) — suitable for dev.
+  simple:
+    image: postgres:16-alpine
+    storage: 2Gi
+    persistence: true   # false ⇒ emptyDir (ephemeral)
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+
+# TLS serving cert for the webhook, cert-manager-managed. The webhook's caBundle is injected
+# by cert-manager via inject-ca-from.
+tls:
+  issuerRef:
+    name: krci-audit-selfsigned
+    kind: Issuer
+  # Create a self-signed Issuer in this namespace. Set false to use an existing issuer.
+  createSelfSignedIssuer: true
+
+# Schema migration Job (Helm hook on install/upgrade).
+migration:
+  enabled: true
+
+serviceAccount:
+  create: true
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+resources:
+  kubeAuditRest:
+    requests:
+      cpu: "2m"
+      memory: "10Mi"
+    limits:
+      cpu: "1"
+      memory: "32Mi"
+  vector:
+    requests:
+      cpu: "2m"
+      memory: "10Mi"
+    limits:
+      cpu: "1"
+      memory: "256Mi"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
