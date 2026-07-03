@@ -17,56 +17,20 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/KubeRocketCI/krci-audit/internal/migrate"
 	"github.com/KubeRocketCI/krci-audit/internal/models"
+	"github.com/KubeRocketCI/krci-audit/internal/pgtest"
 	"github.com/KubeRocketCI/krci-audit/internal/store"
 )
 
 const insertCols = `(event_uid, received_at, operation, api_group, api_version, resource, kind, namespace, name, object_uid, username, dry_run)`
 
+// setup starts a throwaway PostgreSQL (via internal/pgtest, shared with the service
+// integration tests) and returns a direct connection plus its DSN.
 func setup(t *testing.T) (*pgx.Conn, string) {
 	t.Helper()
-	ctx := context.Background()
-
-	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("audit"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(90*time.Second),
-		),
-	)
-	if err != nil {
-		if isDockerUnavailable(err) {
-			t.Skipf("Docker unavailable, skipping store integration tests: %v", err)
-		}
-		t.Fatalf("start postgres container: %v", err)
-	}
-	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-
-	pgURL, err := container.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	require.NoError(t, migrate.Up(strings.Replace(pgURL, "postgres://", "pgx5://", 1)))
-
-	conn, err := pgx.Connect(ctx, pgURL)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close(context.Background()) })
-
-	return conn, pgURL
-}
-
-func isDockerUnavailable(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "cannot connect to the docker daemon") ||
-		strings.Contains(msg, "docker daemon") ||
-		strings.Contains(msg, "rootless docker not found") ||
-		strings.Contains(msg, "failed to find a working docker")
+	return pgtest.NewConn(t)
 }
 
 func insertEvent(t *testing.T, conn *pgx.Conn, uid string, ts time.Time, dryRun bool) int64 {
@@ -331,4 +295,41 @@ func TestWriterLoginPassword(t *testing.T) {
 	require.Contains(t, strings.ToLower(err.Error()), "permission denied")
 
 	_ = conn // container connection kept alive for the test lifetime
+}
+
+// SetReaderPassword makes audit_reader a real LOGIN role (the deploy-time step that lets the
+// read API connect). Verifies the reader can then log in and SELECT, but can neither INSERT nor
+// UPDATE nor DELETE — the read path is structurally non-mutating by construction.
+func TestReaderLoginPassword(t *testing.T) {
+	conn, pgURL := setup(t)
+	ctx := context.Background()
+	insertEvent(t, conn, "evt-read", time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC), false)
+
+	pgx5 := strings.Replace(pgURL, "postgres://", "pgx5://", 1)
+	require.NoError(t, migrate.SetReaderPassword(ctx, pgx5, "re@der p@ss#1"))
+
+	u, err := url.Parse(pgURL)
+	require.NoError(t, err)
+	u.User = url.UserPassword(store.ReaderRole, "re@der p@ss#1")
+
+	rconn, err := pgx.Connect(ctx, u.String())
+	require.NoError(t, err, "audit_reader must be able to log in after SetReaderPassword")
+	defer func() { _ = rconn.Close(ctx) }()
+
+	var n int
+	require.NoError(t, rconn.QueryRow(ctx, `SELECT count(*) FROM audit_events_real`).Scan(&n), "reader may SELECT the view")
+	require.Equal(t, 1, n)
+
+	_, err = rconn.Exec(ctx, `INSERT INTO audit_events `+insertCols+`
+		VALUES ('evt-r2',now(),'CREATE','','v1','secrets','Secret','foo','a',null,'dev@example.com',false)`)
+	require.Error(t, err, "audit_reader must NOT INSERT")
+	require.Contains(t, strings.ToLower(err.Error()), "permission denied")
+
+	_, err = rconn.Exec(ctx, `UPDATE audit_events SET name = 'x' WHERE event_uid = 'evt-read'`)
+	require.Error(t, err, "audit_reader must NOT UPDATE")
+	require.Contains(t, strings.ToLower(err.Error()), "permission denied")
+
+	_, err = rconn.Exec(ctx, `DELETE FROM audit_events WHERE event_uid = 'evt-read'`)
+	require.Error(t, err, "audit_reader must NOT DELETE")
+	require.Contains(t, strings.ToLower(err.Error()), "permission denied")
 }

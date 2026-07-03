@@ -94,6 +94,13 @@ db:
     passwordKey: password
     password: ""      # inline (dev only); empty ⇒ generated + kept
 
+  # Least-privilege reader (audit_reader, SELECT-only) used by the read API. Same lifecycle as
+  # writer: the migration Job applies its LOGIN password. Only used when api.enabled.
+  reader:
+    secretName: ""    # if set, read the password from here (key = reader.passwordKey)
+    passwordKey: password
+    password: ""      # inline (dev only); empty ⇒ generated + kept
+
   # pgo mode (Crunchydata postgres-operator). Provisions a PostgresCluster + owner user.
   pgo:
     postgresVersion: 16
@@ -126,6 +133,25 @@ tls:
     kind: Issuer
   # Create a self-signed Issuer in this namespace. Set false to use an existing issuer.
   createSelfSignedIssuer: true
+
+# Read-only audit API (initiator lookup + audit-events query). Runs as a separate Deployment
+# and connects to PostgreSQL as the least-privilege audit_reader role, so it can never mutate
+# the trail. Consumers reach it by in-cluster DNS at <release>-api.<namespace>:<api.port>.
+api:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: epamedp/krci-audit-api
+    tag: ""          # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  port: 8080
+  resources:
+    requests:
+      cpu: "10m"
+      memory: "32Mi"
+    limits:
+      cpu: "500m"
+      memory: "128Mi"
 
 # Schema migration Job (Helm hook on install/upgrade).
 migration:
