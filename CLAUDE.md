@@ -11,21 +11,27 @@ partition-rotation, and downstream consumers (Portal, SIEM) are layered on top s
 ## Build & Test
 
 ```
-make build        # → dist/krci-audit-migrate-<arch>  (CGO_ENABLED=0)
-make test         # go test ./... -coverprofile=coverage.out
-make test-unit    # fast unit tests only (no Docker)
-make lint         # golangci-lint v2
-make helm-lint    # helm lint deploy-templates
+make build             # → dist/krci-audit-migrate-<arch>, dist/krci-audit-api-<arch>  (CGO_ENABLED=0)
+make test              # CI-safe suite: go test ./... -coverprofile=coverage.out (no Docker)
+make test-unit         # fast unit tests only (no Docker)
+make test-integration  # Docker-backed store/service tests (testcontainers; requires Docker)
+make lint              # golangci-lint v2
+make helm-lint         # helm lint deploy-templates
 make helm-template
 ```
 
-- **Unit tests** (`internal/config`, `internal/dsn`, `internal/models`, `pkg/identity`) run anywhere.
-- **Store integration tests** (`internal/store`) start a throwaway PostgreSQL via
+- **Unit tests** (`internal/config`, `internal/dsn`, `internal/models`, `pkg/identity`, `internal/api`) run anywhere and are what `make test`/CI (Tekton) run — no Docker involved.
+- **Store/service integration tests** (`internal/store`, `internal/services/initiator`,
+  `internal/services/events` integration file) start a throwaway PostgreSQL via
   **testcontainers** → require **Docker**. They apply the real embedded migrations and assert
-  dedup, append-only, dry-run exclusion, partition pruning, and partition-drop retention. If
-  Docker is unavailable they **skip** (not fail).
+  dedup, append-only, dry-run exclusion, partition pruning, and partition-drop retention. They
+  live behind the `integration` build tag (`make test-integration`) and are excluded from the
+  default build: testcontainers can **panic** (not just return an error) when it can't find a
+  Docker host, which a plain CI run can't safely recover from — the Tekton build/review
+  pipelines have no Docker available, so these never run there.
 - **Helm render tests** (`test/deploy`) shell out to **helm** and assert the webhook /
-  Vector config guarantees. If `helm` is absent they **skip**.
+  Vector config guarantees. If `helm` is absent they **skip** at runtime (no build tag needed,
+  since `exec.LookPath` fails cleanly instead of panicking).
 
 Run a single package: `go test ./internal/store/... -run TestDedup`.
 

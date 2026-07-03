@@ -21,6 +21,13 @@ A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit cap
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | affinity | object | `{}` |  |
+| api.enabled | bool | `true` |  |
+| api.port | int | `8080` |  |
+| api.replicaCount | int | `1` |  |
+| api.resources.limits.cpu | string | `"500m"` |  |
+| api.resources.limits.memory | string | `"128Mi"` |  |
+| api.resources.requests.cpu | string | `"10m"` |  |
+| api.resources.requests.memory | string | `"32Mi"` |  |
 | capture.failurePolicy | string | `"Ignore"` |  |
 | capture.filter.groupResources[0].group | string | `"tekton.dev"` |  |
 | capture.filter.groupResources[0].resource | string | `"pipelineruns"` |  |
@@ -55,6 +62,9 @@ A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit cap
 | db.pgo.replicas | int | `1` |  |
 | db.pgo.storage | string | `"2Gi"` |  |
 | db.port | int | `5432` |  |
+| db.reader.password | string | `""` |  |
+| db.reader.passwordKey | string | `"password"` |  |
+| db.reader.secretName | string | `""` |  |
 | db.simple.image | string | `"postgres:16-alpine"` |  |
 | db.simple.persistence | bool | `true` |  |
 | db.simple.resources.limits.cpu | string | `"1"` |  |
@@ -68,12 +78,12 @@ A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit cap
 | db.writer.secretName | string | `""` |  |
 | fullnameOverride | string | `"krci-audit"` |  |
 | imagePullSecrets | list | `[]` |  |
+| images.app.pullPolicy | string | `"IfNotPresent"` |  |
+| images.app.repository | string | `"epamedp/krci-audit"` |  |
+| images.app.tag | string | `""` |  |
 | images.kubeAuditRest.pullPolicy | string | `"IfNotPresent"` |  |
 | images.kubeAuditRest.repository | string | `"ghcr.io/richardoc/kube-audit-rest"` |  |
 | images.kubeAuditRest.tag | string | `"ad68f71978e8cd610b5b06769fab301cf9ee74d0-distroless@sha256:2444c1207156681c4ed04e7bb02662820c9bfb31b50e8fe5b0112b3f8f577d42"` |  |
-| images.migrate.pullPolicy | string | `"IfNotPresent"` |  |
-| images.migrate.repository | string | `"epamedp/krci-audit-migrate"` |  |
-| images.migrate.tag | string | `""` |  |
 | images.vector.pullPolicy | string | `"IfNotPresent"` |  |
 | images.vector.repository | string | `"docker.io/timberio/vector"` |  |
 | images.vector.tag | string | `"0.56.0-distroless-static"` |  |
@@ -98,4 +108,3 @@ A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit cap
 | tls.issuerRef.kind | string | `"Issuer"` |  |
 | tls.issuerRef.name | string | `"krci-audit-selfsigned"` |  |
 | tolerations | list | `[]` |  |
-

@@ -85,6 +85,3 @@ helm install krci-audit deploy-templates -n krci-audit --set db.mode=simple
 helm install krci-audit deploy-templates -n krci-audit \
   --set db.mode=external --set db.host=my-pg --set db.owner.secretName=my-pg-creds
 ```
-
-In every mode the migration Job applies the schema and grants the least-privilege
-`audit_writer` role its LOGIN password; Vector connects only as `audit_writer` (append-only).

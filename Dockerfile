@@ -1,13 +1,14 @@
-# Migrator image: applies the embedded schema migrations. Run as a Helm install/upgrade Job
-# with AUDIT_DB_DSN (or PG* env) from a Secret.
-FROM golang:1.25-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /out/krci-audit-migrate ./cmd/krci-audit-migrate
-
+# Single image for both deployables: the migration Job (krci-audit-migrate) and the read API
+# (krci-audit-api). The platform build pipeline publishes exactly one image per codebase, so
+# both binaries ship together; the Job/Deployment select which one runs via `command`.
+# Use distroless as minimal base image to package the binaries
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
-COPY --from=build /out/krci-audit-migrate /krci-audit-migrate
-USER nonroot:nonroot
+ARG TARGETARCH
+WORKDIR /
+COPY ./dist/krci-audit-migrate-${TARGETARCH} /krci-audit-migrate
+COPY ./dist/krci-audit-api-${TARGETARCH} /krci-audit-api
+
+USER 65532:65532
+
 ENTRYPOINT ["/krci-audit-migrate"]

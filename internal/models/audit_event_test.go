@@ -1,44 +1,39 @@
 package models
 
 import (
-	"slices"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestColumnsDerivedFromStruct(t *testing.T) {
 	all := AllColumns()
 	// Spot-check ordering matches the DDL (event_uid first, received_at second — the PK).
-	if all[0] != "event_uid" || all[1] != "received_at" {
-		t.Fatalf("unexpected leading columns: %v", all[:2])
-	}
-	if len(all) != 18 {
-		t.Fatalf("expected 18 columns, got %d: %v", len(all), all)
-	}
+	require.Equal(t, []string{"event_uid", "received_at"}, all[:2])
+	require.Len(t, all, 18)
 }
 
 func TestLiftedExcludesBodies(t *testing.T) {
 	lifted := LiftedColumns()
 	for _, body := range []string{"object", "old_object", "raw"} {
-		if slices.Contains(lifted, body) {
-			t.Fatalf("lifted query surface must not include body column %q", body)
-		}
+		require.NotContains(t, lifted, body, "lifted query surface must not include body column %q", body)
 	}
+
 	// Lifted must be a strict subset of all columns.
 	all := AllColumns()
 	for _, c := range lifted {
-		if !slices.Contains(all, c) {
-			t.Fatalf("lifted column %q is not a real column", c)
-		}
+		require.Contains(t, all, c, "lifted column %q is not a real column", c)
 	}
-	if len(lifted) != len(all)-3 {
-		t.Fatalf("expected lifted = all - 3 bodies; all=%d lifted=%d", len(all), len(lifted))
-	}
+	require.Len(t, lifted, len(all)-3, "expected lifted = all - 3 bodies")
+}
+
+func TestAllOperations(t *testing.T) {
+	want := []Operation{OperationCreate, OperationUpdate, OperationDelete, OperationConnect}
+	require.Equal(t, want, AllOperations())
 }
 
 func TestReturnedSlicesAreCopies(t *testing.T) {
 	a := AllColumns()
 	a[0] = "mutated"
-	if AllColumns()[0] != "event_uid" {
-		t.Fatal("AllColumns must return a defensive copy")
-	}
+	require.Equal(t, "event_uid", AllColumns()[0], "AllColumns must return a defensive copy")
 }

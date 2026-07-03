@@ -1,3 +1,5 @@
+//go:build integration
+
 package store_test
 
 // Integration tests for the persistence contract. They apply the real embedded migrations
@@ -6,7 +8,9 @@ package store_test
 // default read surface, partition pruning for time-bounded queries, and partition-drop
 // retention.
 //
-// Requires Docker. If Docker is unavailable the whole test is skipped rather than failed.
+// Requires Docker, so this file only builds under the `integration` tag (see `make
+// test-integration`) — testcontainers can panic instead of returning an error when it can't
+// find a Docker host, which a plain CI test run can't safely recover from.
 
 import (
 	"context"

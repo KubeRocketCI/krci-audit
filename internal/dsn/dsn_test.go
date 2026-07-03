@@ -3,42 +3,30 @@ package dsn
 import (
 	"net/url"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildEncodesPassword(t *testing.T) {
 	got := Build("db-host", "5432", "audit_writer", "p@ss w/ord:#", "krci-audit", "require")
 
 	u, err := url.Parse(got)
-	if err != nil {
-		t.Fatalf("Build produced an unparseable URL %q: %v", got, err)
-	}
-	if u.Scheme != "pgx5" {
-		t.Fatalf("scheme = %q, want pgx5", u.Scheme)
-	}
-	if u.Host != "db-host:5432" {
-		t.Fatalf("host = %q", u.Host)
-	}
-	if u.Path != "/krci-audit" {
-		t.Fatalf("path = %q", u.Path)
-	}
+	require.NoError(t, err, "Build produced an unparseable URL %q", got)
+	require.Equal(t, "pgx5", u.Scheme)
+	require.Equal(t, "db-host:5432", u.Host)
+	require.Equal(t, "/krci-audit", u.Path)
+
 	pw, _ := u.User.Password()
-	if pw != "p@ss w/ord:#" {
-		t.Fatalf("password round-trip failed: %q", pw)
-	}
-	if u.Query().Get("sslmode") != "require" {
-		t.Fatalf("sslmode = %q", u.Query().Get("sslmode"))
-	}
+	require.Equal(t, "p@ss w/ord:#", pw, "password round-trip failed")
+	require.Equal(t, "require", u.Query().Get("sslmode"))
 }
 
 func TestResolvePrefersExplicitDSN(t *testing.T) {
 	t.Setenv("AUDIT_DB_DSN", "postgres://u:p@h:5432/d?sslmode=disable")
+
 	got, err := Resolve()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "pgx5://u:p@h:5432/d?sslmode=disable" {
-		t.Fatalf("Resolve normalized scheme wrong: %q", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "pgx5://u:p@h:5432/d?sslmode=disable", got, "Resolve normalized scheme wrong")
 }
 
 func TestResolveFromDiscreteEnv(t *testing.T) {
@@ -51,13 +39,19 @@ func TestResolveFromDiscreteEnv(t *testing.T) {
 	t.Setenv("PGSSLMODE", "")
 
 	got, err := Resolve()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "pgx5://krci-audit:secret@krci-audit-primary:5432/krci-audit?sslmode=disable"
-	if got != want {
-		t.Fatalf("Resolve = %q, want %q (default port/sslmode)", got, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "pgx5://krci-audit:secret@krci-audit-primary:5432/krci-audit?sslmode=disable", got,
+		"Resolve default port/sslmode")
+}
+
+func TestToPostgresScheme(t *testing.T) {
+	got := ToPostgresScheme("pgx5://u:p@h:5432/d?sslmode=disable")
+	require.Equal(t, "postgres://u:p@h:5432/d?sslmode=disable", got)
+}
+
+func TestToPostgresSchemeLeavesOtherSchemesAlone(t *testing.T) {
+	got := ToPostgresScheme("postgres://u:p@h:5432/d")
+	require.Equal(t, "postgres://u:p@h:5432/d", got, "ToPostgresScheme must not touch a non-pgx5 DSN")
 }
 
 func TestResolveMissing(t *testing.T) {
@@ -65,7 +59,7 @@ func TestResolveMissing(t *testing.T) {
 	t.Setenv("PGHOST", "")
 	t.Setenv("PGUSER", "")
 	t.Setenv("PGDATABASE", "")
-	if _, err := Resolve(); err == nil {
-		t.Fatal("expected error when neither DSN nor PG* env is set")
-	}
+
+	_, err := Resolve()
+	require.Error(t, err, "expected error when neither DSN nor PG* env is set")
 }

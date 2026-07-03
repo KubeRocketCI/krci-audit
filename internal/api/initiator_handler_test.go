@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func (s *stubInitiator) ByObject(_ context.Context, kind, ns, name string) (init
 	return s.res, s.err
 }
 
-func strptr(s string) *string { return &s }
+func ptrTo[T any](v T) *T { return &v }
 
 func TestGetInitiatorByUID(t *testing.T) {
 	ts := time.Date(2026, 5, 10, 9, 0, 0, 0, time.UTC)
@@ -39,7 +40,7 @@ func TestGetInitiatorByUID(t *testing.T) {
 	h := NewInitiatorHandler(stub)
 
 	resp, err := h.GetInitiator(context.Background(), GetInitiatorRequestObject{
-		Params: GetInitiatorParams{ObjectUid: strptr("uid-1")},
+		Params: GetInitiatorParams{ObjectUid: ptrTo("uid-1")},
 	})
 	require.NoError(t, err)
 
@@ -57,7 +58,7 @@ func TestGetInitiatorByKindNamespaceName(t *testing.T) {
 	h := NewInitiatorHandler(stub)
 
 	resp, err := h.GetInitiator(context.Background(), GetInitiatorRequestObject{
-		Params: GetInitiatorParams{Kind: strptr("PipelineRun"), Namespace: strptr("edp"), Name: strptr("b1")},
+		Params: GetInitiatorParams{Kind: ptrTo("PipelineRun"), Namespace: ptrTo("edp"), Name: ptrTo("b1")},
 	})
 	require.NoError(t, err)
 	_, is := resp.(GetInitiator200JSONResponse)
@@ -71,7 +72,7 @@ func TestGetInitiatorNotFoundIsEmptyNot404(t *testing.T) {
 	h := NewInitiatorHandler(stub)
 
 	resp, err := h.GetInitiator(context.Background(), GetInitiatorRequestObject{
-		Params: GetInitiatorParams{ObjectUid: strptr("missing")},
+		Params: GetInitiatorParams{ObjectUid: ptrTo("missing")},
 	})
 	require.NoError(t, err)
 	ok, is := resp.(GetInitiator200JSONResponse)
@@ -80,13 +81,28 @@ func TestGetInitiatorNotFoundIsEmptyNot404(t *testing.T) {
 	require.Nil(t, ok.Actor)
 }
 
+func TestGetInitiatorServiceErrorIs500(t *testing.T) {
+	stub := &stubInitiator{err: errors.New("connection reset")}
+	h := NewInitiatorHandler(stub)
+
+	resp, err := h.GetInitiator(context.Background(), GetInitiatorRequestObject{
+		Params: GetInitiatorParams{ObjectUid: ptrTo("uid-1")},
+	})
+	require.NoError(t, err)
+
+	bad, is := resp.(GetInitiator500JSONResponse)
+	require.True(t, is)
+	require.Equal(t, "500", bad.Code)
+	require.NotContains(t, bad.Message, "connection reset", "internal error detail must not reach the client")
+}
+
 func TestGetInitiatorMissingParamsIs400(t *testing.T) {
 	stub := &stubInitiator{}
 	h := NewInitiatorHandler(stub)
 
 	// Neither objectUid nor a complete kind/namespace/name triple.
 	resp, err := h.GetInitiator(context.Background(), GetInitiatorRequestObject{
-		Params: GetInitiatorParams{Kind: strptr("PipelineRun")},
+		Params: GetInitiatorParams{Kind: ptrTo("PipelineRun")},
 	})
 	require.NoError(t, err)
 	_, is := resp.(GetInitiator400JSONResponse)
