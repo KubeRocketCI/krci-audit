@@ -38,8 +38,10 @@ func New(dsn string) (*migrate.Migrate, error) {
 
 // RunCLI is the migrator's top-level operation, extracted from main so the direction
 // branching is unit-testable and main stays a thin entrypoint. On "up" it applies all
-// migrations and, when writerPassword is non-empty, sets the audit_writer LOGIN password.
-func RunCLI(ctx context.Context, direction, dsn, writerPassword string) error {
+// migrations and, when the corresponding password is non-empty, sets the audit_writer and/or
+// audit_reader LOGIN password (the deploy-time step that lets Vector and the read API connect
+// as their least-privilege roles).
+func RunCLI(ctx context.Context, direction, dsn, writerPassword, readerPassword string) error {
 	switch direction {
 	case "up":
 		if err := Up(dsn); err != nil {
@@ -47,6 +49,11 @@ func RunCLI(ctx context.Context, direction, dsn, writerPassword string) error {
 		}
 		if writerPassword != "" {
 			if err := SetWriterPassword(ctx, dsn, writerPassword); err != nil {
+				return err
+			}
+		}
+		if readerPassword != "" {
+			if err := SetReaderPassword(ctx, dsn, readerPassword); err != nil {
 				return err
 			}
 		}
@@ -77,26 +84,40 @@ func Up(dsn string) error {
 // SetWriterPassword gives the least-privilege audit_writer role a LOGIN password so the
 // ingestion path (Vector) can connect. The migration creates audit_writer NOLOGIN (keeping
 // credentials out of version-controlled SQL); this step attaches the password from a Secret
-// at deploy time. It is idempotent. The password is escaped server-side via format(%L) so it
-// cannot be used for SQL injection despite ALTER ROLE not accepting bind parameters.
+// at deploy time. It is idempotent.
+func SetWriterPassword(ctx context.Context, migrateDSN, password string) error {
+	return setRoleLoginPassword(ctx, migrateDSN, store.WriterRole, password)
+}
+
+// SetReaderPassword gives the least-privilege audit_reader role a LOGIN password so the read
+// API can connect. Mirrors SetWriterPassword: migration 000003 creates audit_reader NOLOGIN,
+// this attaches the password from a Secret at deploy time. It is idempotent.
+func SetReaderPassword(ctx context.Context, migrateDSN, password string) error {
+	return setRoleLoginPassword(ctx, migrateDSN, store.ReaderRole, password)
+}
+
+// setRoleLoginPassword attaches a LOGIN password to an existing NOLOGIN role. The password is
+// escaped server-side via format(%L) so it cannot be used for SQL injection despite ALTER ROLE
+// not accepting bind parameters. The role identifier is a compile-time constant (store.*Role),
+// never user input.
 //
 // migrateDSN must be a pgx5 DSN (the same one used for migrations); it is connected with pgx
 // after converting to the postgres:// scheme.
-func SetWriterPassword(ctx context.Context, migrateDSN, password string) error {
+func setRoleLoginPassword(ctx context.Context, migrateDSN, role, password string) error {
 	conn, err := pgx.Connect(ctx, dsn.ToPostgresScheme(migrateDSN))
 	if err != nil {
-		return fmt.Errorf("connect to set writer password: %w", err)
+		return fmt.Errorf("connect to set %s password: %w", role, err)
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
 	var stmt string
 	if err := conn.QueryRow(ctx,
-		fmt.Sprintf(`SELECT format('ALTER ROLE %s WITH LOGIN PASSWORD %%L', $1::text)`, store.WriterRole), password,
+		fmt.Sprintf(`SELECT format('ALTER ROLE %s WITH LOGIN PASSWORD %%L', $1::text)`, role), password,
 	).Scan(&stmt); err != nil {
 		return fmt.Errorf("build ALTER ROLE statement: %w", err)
 	}
 	if _, err := conn.Exec(ctx, stmt); err != nil {
-		return fmt.Errorf("set audit_writer password: %w", err)
+		return fmt.Errorf("set %s password: %w", role, err)
 	}
 
 	return nil

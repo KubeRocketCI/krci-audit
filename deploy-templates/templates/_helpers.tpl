@@ -39,6 +39,34 @@ app.kubernetes.io/name: {{ include "krci-audit.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{/*
+Read API identity. The API runs as a separate Deployment/Pod from the capture pod, so it
+needs its own selector (a distinct app.kubernetes.io/name) — the capture Service selects on
+the base name and must never route to API pods, and vice versa.
+*/}}
+{{- define "krci-audit.apiName" -}}
+{{- printf "%s-api" (include "krci-audit.name" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "krci-audit.apiFullname" -}}
+{{- printf "%s-api" (include "krci-audit.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "krci-audit.apiSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "krci-audit.apiName" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "krci-audit.apiLabels" -}}
+helm.sh/chart: {{ include "krci-audit.chart" . }}
+{{ include "krci-audit.apiSelectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: read-api
+{{- end }}
+
 {{- define "krci-audit.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "krci-audit.fullname" .) .Values.serviceAccount.name }}
@@ -91,6 +119,11 @@ The audit_writer role/password is chart-managed in all modes (the migration Job 
 {{/* Secret holding the audit_writer password (key: password). Chart-created unless provided. */}}
 {{- define "krci-audit.writerSecretName" -}}
 {{- default (printf "%s-writer" (include "krci-audit.fullname" .)) .Values.db.writer.secretName -}}
+{{- end }}
+
+{{/* Secret holding the audit_reader password (key: password). Chart-created unless provided. */}}
+{{- define "krci-audit.readerSecretName" -}}
+{{- default (printf "%s-reader" (include "krci-audit.fullname" .)) .Values.db.reader.secretName -}}
 {{- end }}
 
 {{/*

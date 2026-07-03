@@ -1,0 +1,280 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: krci-audit read API
+  description: >-
+    Read-only API over the krci-audit event store. Serves the dry-run-excluded
+    audit_events_real view via the least-privilege audit_reader role.
+paths:
+  /api/v1/audit/initiator:
+    get:
+      summary: Resolve who created a Kubernetes object
+      description: >-
+        Returns the CREATE actor for an object identified either by its object UID
+        (metadata.uid) or by kind + namespace + name. If the object was never audited
+        the result is empty (found=false), not an error, so the caller can fall back
+        to "unknown".
+      operationId: getInitiator
+      tags:
+        - Initiator
+      parameters:
+        - $ref: '#/components/parameters/objectUidParam'
+        - $ref: '#/components/parameters/kindParam'
+        - $ref: '#/components/parameters/namespaceParam'
+        - $ref: '#/components/parameters/nameParam'
+      responses:
+        '200':
+          description: The creator of the object, or an empty result if never audited.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Initiator'
+        '400':
+          description: Neither objectUid nor kind+namespace+name was provided.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/audit/events:
+    get:
+      summary: Query audit events
+      description: >-
+        Query audit events filtered by the common lifted fields. Filtering by actor
+        also serves a per-user activity view. Results are paginated. No match returns
+        an empty list, not an error.
+      operationId: listAuditEvents
+      tags:
+        - Events
+      parameters:
+        - $ref: '#/components/parameters/actorParam'
+        - $ref: '#/components/parameters/operationParam'
+        - $ref: '#/components/parameters/groupParam'
+        - $ref: '#/components/parameters/resourceParam'
+        - $ref: '#/components/parameters/kindParam'
+        - $ref: '#/components/parameters/namespaceParam'
+        - $ref: '#/components/parameters/nameParam'
+        - $ref: '#/components/parameters/objectUidParam'
+        - $ref: '#/components/parameters/fromParam'
+        - $ref: '#/components/parameters/toParam'
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+      responses:
+        '200':
+          description: A paginated list of matching audit events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventsResponse'
+        '400':
+          description: Bad request due to invalid parameters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  parameters:
+    objectUidParam:
+      name: objectUid
+      in: query
+      required: false
+      description: The object's metadata.uid (stable correlation key across its lifecycle).
+      schema:
+        type: string
+    kindParam:
+      name: kind
+      in: query
+      required: false
+      description: The Kubernetes object kind (e.g. PipelineRun).
+      schema:
+        type: string
+    namespaceParam:
+      name: namespace
+      in: query
+      required: false
+      description: The object's namespace.
+      schema:
+        type: string
+    nameParam:
+      name: name
+      in: query
+      required: false
+      description: The object's name.
+      schema:
+        type: string
+    actorParam:
+      name: actor
+      in: query
+      required: false
+      description: The acting username (request.userInfo.username).
+      schema:
+        type: string
+    operationParam:
+      name: operation
+      in: query
+      required: false
+      description: The admission operation.
+      schema:
+        $ref: '#/components/schemas/Operation'
+    groupParam:
+      name: group
+      in: query
+      required: false
+      description: The API group of the resource (request.resource.group).
+      schema:
+        type: string
+    resourceParam:
+      name: resource
+      in: query
+      required: false
+      description: The resource (plural, e.g. pipelineruns).
+      schema:
+        type: string
+    fromParam:
+      name: from
+      in: query
+      required: false
+      description: Inclusive lower bound on received_at (RFC 3339).
+      schema:
+        type: string
+        format: date-time
+    toParam:
+      name: to
+      in: query
+      required: false
+      description: Exclusive upper bound on received_at (RFC 3339).
+      schema:
+        type: string
+        format: date-time
+    pageParam:
+      name: page
+      in: query
+      required: false
+      description: 1-based page number (default 1).
+      schema:
+        type: integer
+    perPageParam:
+      name: perPage
+      in: query
+      required: false
+      description: Page size (default 20, max 100).
+      schema:
+        type: integer
+  schemas:
+    Operation:
+      type: string
+      enum: [CREATE, UPDATE, DELETE, CONNECT]
+      description: The admission operation recorded on an event.
+    Initiator:
+      type: object
+      description: The CREATE actor of an object, or an empty result when never audited.
+      properties:
+        found:
+          type: boolean
+          description: Whether a CREATE audit event exists for the object.
+        actor:
+          type: string
+          description: The username that created the object.
+        operation:
+          $ref: '#/components/schemas/Operation'
+        timestamp:
+          type: string
+          format: date-time
+          description: When the creating event was received.
+      required:
+        - found
+    AuditEvent:
+      type: object
+      description: One audit event, projected to the lifted (searchable) columns.
+      properties:
+        eventUid:
+          type: string
+        receivedAt:
+          type: string
+          format: date-time
+        operation:
+          $ref: '#/components/schemas/Operation'
+        apiGroup:
+          type: string
+        apiVersion:
+          type: string
+        resource:
+          type: string
+        kind:
+          type: string
+        subResource:
+          type: string
+          nullable: true
+        namespace:
+          type: string
+        name:
+          type: string
+        objectUid:
+          type: string
+          nullable: true
+        username:
+          type: string
+        dryRun:
+          type: boolean
+      required:
+        - eventUid
+        - receivedAt
+        - operation
+        - apiGroup
+        - apiVersion
+        - resource
+        - kind
+        - namespace
+        - name
+        - username
+        - dryRun
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        perPage:
+          type: integer
+      required:
+        - total
+        - page
+        - perPage
+    AuditEventsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required:
+        - data
+        - pagination
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: A short error code representing the type of error.
+        message:
+          type: string
+          description: A human-readable message providing more details about the error.
+      required:
+        - code
+        - message

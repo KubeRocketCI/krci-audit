@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
+# Single codegen pass into the `api` package: DTO models + chi server stubs + strict server.
+# Two-package split (api + models with a dot-import): krci-audit
+# already has a hand-written domain package internal/models (AuditEvent), so generating the
+# OpenAPI DTOs into that package would clash. One oapi.yaml, one generated file, no second
+# models package.
+package: api
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+output: internal/api/oapi_gen.go
+output-options:
+  skip-prune: true
+  nullable-type: true

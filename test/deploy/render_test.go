@@ -94,6 +94,29 @@ func TestSubresourcePolicySpecLevelByDefault(t *testing.T) {
 	require.Contains(t, withStatus, `if .request.subResource == "status" { sub_ok = true }`)
 }
 
+// The read API renders as a SEPARATE Deployment + ClusterIP Service (no Ingress), connects as
+// the least-privilege audit_reader role, and the migration Job provisions the reader LOGIN
+// password. Its selector is disjoint from the capture pod's so neither Service cross-routes.
+func TestReadAPISurface(t *testing.T) {
+	out := render(t)
+
+	require.Contains(t, out, "name: krci-audit-api", "API Deployment/Service are named distinctly from the capture pod")
+	require.Contains(t, out, "app.kubernetes.io/component: read-api")
+	require.Contains(t, out, "containerPort: 8080", "API serves on 8080")
+	require.Contains(t, out, `value: "audit_reader"`, "API connects as the SELECT-only reader role")
+	require.Contains(t, out, "AUDIT_READER_PASSWORD", "migration Job provisions the reader login")
+	require.Contains(t, out, "name: krci-audit-reader", "reader password Secret is chart-managed")
+	require.NotContains(t, out, "kind: Ingress", "API is reachable intra-cluster only, no Ingress")
+}
+
+// Disabling the API removes all of its objects and the reader-password provisioning.
+func TestReadAPIDisabled(t *testing.T) {
+	out := render(t, "--set", "api.enabled=false")
+	require.NotContains(t, out, "name: krci-audit-api")
+	require.NotContains(t, out, "AUDIT_READER_PASSWORD")
+	require.NotContains(t, out, "name: krci-audit-reader")
+}
+
 func TestCaptureLevelToggle(t *testing.T) {
 	meta := render(t)
 	require.Contains(t, meta, `obj = { "apiVersion": .request.object.apiVersion`, "metadata-only trims the body")

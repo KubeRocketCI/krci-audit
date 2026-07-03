@@ -85,6 +85,14 @@ spec:
                 secretKeyRef:
                   name: {{ include "krci-audit.writerSecretName" . }}
                   key: {{ .Values.db.writer.passwordKey }}
+            {{- if .Values.api.enabled }}
+            # Applied to the audit_reader role so the read API can log in (SELECT-only).
+            - name: AUDIT_READER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "krci-audit.readerSecretName" . }}
+                  key: {{ .Values.db.reader.passwordKey }}
+            {{- end }}
       volumes:
         - name: owner
           secret:

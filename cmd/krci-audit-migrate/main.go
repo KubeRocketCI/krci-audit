@@ -1,8 +1,8 @@
 // Command krci-audit-migrate applies the krci-audit schema migrations, then (on `up`)
-// optionally sets the audit_writer login password from AUDIT_WRITER_PASSWORD. Configuration
-// is resolved by internal/config (AUDIT_DB_DSN or PG* env), so the same image serves the
-// external, pgo, and simple chart DB modes. It is idempotent and safe to run on every
-// install/upgrade.
+// optionally sets the audit_writer and audit_reader login passwords from AUDIT_WRITER_PASSWORD
+// and AUDIT_READER_PASSWORD. Configuration is resolved by internal/config (AUDIT_DB_DSN or PG*
+// env), so the same image serves the external, pgo, and simple chart DB modes. It is
+// idempotent and safe to run on every install/upgrade.
 package main
 
 import (
@@ -25,7 +25,7 @@ func main() {
 		log.Fatalf("configuration error: %v", err)
 	}
 
-	if err := migrate.RunCLI(context.Background(), *dir, cfg.DSN, cfg.WriterPassword); err != nil {
+	if err := migrate.RunCLI(context.Background(), *dir, cfg.DSN, cfg.WriterPassword, cfg.ReaderPassword); err != nil {
 		log.Fatalf("migration %s failed: %v", *dir, err)
 	}
 

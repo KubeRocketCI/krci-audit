@@ -17,6 +17,7 @@ import (
 // Operation is the admission operation recorded on an event (request.operation).
 type Operation string
 
+// Supported Operation values.
 const (
 	OperationCreate  Operation = "CREATE"
 	OperationUpdate  Operation = "UPDATE"
@@ -24,10 +25,18 @@ const (
 	OperationConnect Operation = "CONNECT"
 )
 
+// AllOperations returns every admission operation value krci-audit records. This is the
+// source of truth other packages (e.g. API filter validation) should derive from rather than
+// hand-listing the values again.
+func AllOperations() []Operation {
+	return []Operation{OperationCreate, OperationUpdate, OperationDelete, OperationConnect}
+}
+
 // CaptureLevel controls how much of the object/oldObject body is stored. Metadata-only is
 // the default (bounds size and PII exposure); full stores the whole body.
 type CaptureLevel string
 
+// Supported CaptureLevel values.
 const (
 	CaptureLevelMetadata CaptureLevel = "metadata"
 	CaptureLevelFull     CaptureLevel = "full"

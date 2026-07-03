@@ -6,15 +6,24 @@ DIST_DIR=${CURRENT_DIR}/dist
 LOCALBIN ?= ${CURRENT_DIR}/bin
 GOLANGCI_LINT_VERSION ?= v2.1.6
 HELMDOCS_VERSION ?= v1.14.2
-# When a read API with internal/api/oapi.yaml is added, wire OAPICODEGEN_VERSION + a
-# `generate` target (oapi-codegen passes for server + models). Omitted now: no OpenAPI spec yet.
+OAPICODEGEN_VERSION ?= v2.4.1
 
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 .PHONY: build
-build: ## build the migration runner binary
+build: ## build the migration runner + read API binaries
 	CGO_ENABLED=0 GOOS=${HOST_OS} GOARCH=${HOST_ARCH} go build -v -o ${DIST_DIR}/krci-audit-migrate-${HOST_ARCH} ./cmd/krci-audit-migrate
+	CGO_ENABLED=0 GOOS=${HOST_OS} GOARCH=${HOST_ARCH} go build -v -o ${DIST_DIR}/krci-audit-api-${HOST_ARCH} ./cmd/krci-audit-api
+
+.PHONY: generate
+generate: oapi-codegen ## regenerate internal/api/oapi_gen.go from internal/api/oapi.yaml
+	${LOCALBIN}/oapi-codegen --config=${CURRENT_DIR}/internal/api/oapi-config.yaml ${CURRENT_DIR}/internal/api/oapi.yaml
+
+.PHONY: oapi-codegen
+oapi-codegen: $(LOCALBIN)
+	@test -x $(LOCALBIN)/oapi-codegen || \
+		GOBIN=$(LOCALBIN) go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPICODEGEN_VERSION)
 
 .PHONY: test
 test: ## run unit + integration tests (integration needs Docker; helm render needs helm)
