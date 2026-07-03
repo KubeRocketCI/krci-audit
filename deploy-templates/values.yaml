@@ -20,9 +20,10 @@ images:
     repository: docker.io/timberio/vector
     tag: "0.56.0-distroless-static"
     pullPolicy: IfNotPresent
-  # krci-audit-migrate: applies the schema migrations (schema-owner role).
-  migrate:
-    repository: epamedp/krci-audit-migrate
+  # krci-audit app image: one image ships both binaries (krci-audit-migrate, krci-audit-api);
+  # the migration Job and read API Deployment select which one runs via `command`.
+  app:
+    repository: epamedp/krci-audit
     tag: ""          # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
 
@@ -140,10 +141,6 @@ tls:
 api:
   enabled: true
   replicaCount: 1
-  image:
-    repository: epamedp/krci-audit-api
-    tag: ""          # defaults to .Chart.AppVersion
-    pullPolicy: IfNotPresent
   port: 8080
   resources:
     requests:

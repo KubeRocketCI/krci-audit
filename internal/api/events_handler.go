@@ -32,6 +32,7 @@ type EventsHandler struct {
 	service eventsQuerier
 }
 
+// NewEventsHandler creates an EventsHandler backed by the given query capability.
 func NewEventsHandler(service eventsQuerier) *EventsHandler {
 	return &EventsHandler{service: service}
 }

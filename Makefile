@@ -26,12 +26,16 @@ oapi-codegen: $(LOCALBIN)
 		GOBIN=$(LOCALBIN) go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPICODEGEN_VERSION)
 
 .PHONY: test
-test: ## run unit + integration tests (integration needs Docker; helm render needs helm)
+test: lint ## run the CI-safe suite (no Docker; helm render tests skip if helm is absent)
 	go test ./... -coverprofile=coverage.out
 
 .PHONY: test-unit
 test-unit: ## run only the fast unit tests (no Docker)
 	go test ./internal/config/... ./internal/dsn/... ./internal/models/... ./pkg/identity/... -coverprofile=coverage.out
+
+.PHONY: test-integration
+test-integration: ## run the Docker-backed store/service integration tests (testcontainers; requires Docker)
+	go test -tags=integration ./internal/store/... ./internal/services/... -coverprofile=coverage-integration.out
 
 .PHONY: lint
 lint: golangci-lint ## run go lint

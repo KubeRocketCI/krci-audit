@@ -19,6 +19,7 @@ type InitiatorHandler struct {
 	service initiatorResolver
 }
 
+// NewInitiatorHandler creates an InitiatorHandler backed by the given resolver.
 func NewInitiatorHandler(service initiatorResolver) *InitiatorHandler {
 	return &InitiatorHandler{service: service}
 }

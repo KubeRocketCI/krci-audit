@@ -18,6 +18,7 @@ type Server struct {
 	eventsHandler    *EventsHandler
 }
 
+// NewServer creates a Server delegating each capability to its handler.
 func NewServer(initiatorHandler *InitiatorHandler, eventsHandler *EventsHandler) *Server {
 	return &Server{
 		initiatorHandler: initiatorHandler,

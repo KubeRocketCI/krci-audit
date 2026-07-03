@@ -1,3 +1,8 @@
+//go:build integration
+
+// Requires Docker; see internal/store/store_test.go for why this is a build tag, not a
+// runtime skip.
+
 package initiator_test
 
 import (

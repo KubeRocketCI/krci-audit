@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -44,7 +45,7 @@ func TestListAuditEventsMapsFiltersAndClampsPagination(t *testing.T) {
 	over := 500
 	resp, err := h.ListAuditEvents(context.Background(), ListAuditEventsRequestObject{
 		Params: ListAuditEventsParams{
-			Actor: strptr("alice"), Operation: &op, Namespace: strptr("edp"), PerPage: &over,
+			Actor: ptrTo("alice"), Operation: &op, Namespace: ptrTo("edp"), PerPage: &over,
 		},
 	})
 	require.NoError(t, err)
@@ -102,6 +103,19 @@ func TestListAuditEventsRejectsInvertedTimeRange(t *testing.T) {
 	require.True(t, is)
 	require.Equal(t, "400", bad.Code)
 	require.Zero(t, stub.gotFilter, "service must not be queried on invalid input")
+}
+
+func TestListAuditEventsServiceErrorIs500(t *testing.T) {
+	stub := &stubEvents{err: errors.New("connection reset")}
+	h := NewEventsHandler(stub)
+
+	resp, err := h.ListAuditEvents(context.Background(), ListAuditEventsRequestObject{})
+	require.NoError(t, err)
+
+	bad, is := resp.(ListAuditEvents500JSONResponse)
+	require.True(t, is)
+	require.Equal(t, "500", bad.Code)
+	require.NotContains(t, bad.Message, "connection reset", "internal error detail must not reach the client")
 }
 
 func TestListAuditEventsEmptyIsNotError(t *testing.T) {
