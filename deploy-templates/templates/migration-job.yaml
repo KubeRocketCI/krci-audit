@@ -33,7 +33,7 @@ spec:
             - sh
             - -c
             - |
-              until [ -f /owner/{{ .Values.db.owner.passwordKey }} ]; do echo "waiting for owner secret"; sleep 2; done
+              until [ -f /owner/{{ include "krci-audit.ownerPasswordKey" . }} ]; do echo "waiting for owner secret"; sleep 2; done
               # -U is required because this container runs as a uid absent from /etc/passwd;
               # pg_isready otherwise cannot derive a default user and reports "no attempt".
               until pg_isready -h "{{ include "krci-audit.dbHost" . }}" -p "{{ .Values.db.port }}" -U "{{ .Values.db.name }}"; do echo "waiting for postgres"; sleep 2; done
@@ -74,25 +74,25 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ $owner }}
-                  key: {{ .Values.db.owner.userKey }}
+                  key: {{ include "krci-audit.ownerUserKey" . }}
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $owner }}
-                  key: {{ .Values.db.owner.passwordKey }}
+                  key: {{ include "krci-audit.ownerPasswordKey" . }}
             # Applied to the audit_writer role so Vector can log in (all modes).
             - name: AUDIT_WRITER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "krci-audit.writerSecretName" . }}
-                  key: {{ .Values.db.writer.passwordKey }}
+                  key: {{ include "krci-audit.writerPasswordKey" . }}
             {{- if .Values.api.enabled }}
             # Applied to the audit_reader role so the read API can log in (SELECT-only).
             - name: AUDIT_READER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "krci-audit.readerSecretName" . }}
-                  key: {{ .Values.db.reader.passwordKey }}
+                  key: {{ include "krci-audit.readerPasswordKey" . }}
             {{- end }}
       volumes:
         - name: owner

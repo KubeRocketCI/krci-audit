@@ -83,7 +83,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "krci-audit.writerSecretName" . }}
-                  key: {{ .Values.db.writer.passwordKey }}
+                  key: {{ include "krci-audit.writerPasswordKey" . }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp

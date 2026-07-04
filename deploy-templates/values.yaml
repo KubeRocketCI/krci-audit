@@ -9,40 +9,42 @@ replicaCount: 1
 
 imagePullSecrets: []
 
-# krci-audit app image: one image ships both binaries (krci-audit-migrate, krci-audit-api);
+# -- krci-audit app image: one image ships both binaries (krci-audit-migrate, krci-audit-api);
 # the migration Job and read API Deployment select which one runs via `command`. Top-level
 # (not under `images`) because this is the image the CD Pipeline Operator builds and promotes
 # — it overrides Argo CD Helm parameters image.repository/image.tag/image.digest by convention
 # (see edp-cd-pipeline-operator), so this chart must expose them at this exact path.
 image:
   repository: epamedp/krci-audit
-  tag: ""          # defaults to .Chart.AppVersion
+  # -- defaults to .Chart.AppVersion
+  tag: ""
   pullPolicy: IfNotPresent
 
 images:
-  # kube-audit-rest: the ValidatingWebhook that logs the raw AdmissionReview. Pin by digest.
+  # -- kube-audit-rest: the ValidatingWebhook that logs the raw AdmissionReview. Pin by digest.
   kubeAuditRest:
     repository: ghcr.io/richardoc/kube-audit-rest
     tag: "ad68f71978e8cd610b5b06769fab301cf9ee74d0-distroless@sha256:2444c1207156681c4ed04e7bb02662820c9bfb31b50e8fe5b0112b3f8f577d42"
     pullPolicy: IfNotPresent
-  # Vector: tails the log and writes to Postgres. >=0.46 for the postgres sink; >=0.53 for TLS.
+  # -- Vector: tails the log and writes to Postgres. >=0.46 for the postgres sink; >=0.53 for TLS.
   vector:
     repository: docker.io/timberio/vector
     tag: "0.56.0-distroless-static"
     pullPolicy: IfNotPresent
 
-# Both containers must share a uid: kube-audit-rest (lumberjack) writes the log file mode
+# -- Both containers must share a uid: kube-audit-rest (lumberjack) writes the log file mode
 # 0600 and the Vector sidecar reads it from the shared volume.
 sharedUID: 255999
 
-# Capture configuration. The webhook is wildcard-capable; the Vector `filter` selects which
+# -- Capture configuration. The webhook is wildcard-capable; the Vector `filter` selects which
 # events are STORED, and can be changed at any time (edit values + `helm upgrade`) with no
 # code change or rebuild. Defaults select KubeRocketCI objects.
 capture:
-  failurePolicy: Ignore   # never block platform mutations if auditing is down
+  # -- never block platform mutations if auditing is down
+  failurePolicy: Ignore
   timeoutSeconds: 1
   operations: ["CREATE", "UPDATE", "DELETE"]
-  # Webhook rules registered with the API server (which admissions are sent to us).
+  # -- Webhook rules registered with the API server (which admissions are sent to us).
   rules:
     - apiGroups: ["v2.edp.epam.com"]
       apiVersions: ["*"]
@@ -52,66 +54,72 @@ capture:
       apiVersions: ["*"]
       resources: ["pipelineruns"]
       scope: "Namespaced"
-  # Vector store filter (which of the received events are persisted). Default = KRCI objects.
+  # -- Vector store filter (which of the received events are persisted). Default = KRCI objects.
   filter:
-    # Store any event whose request.resource.group is in this list.
+    # -- Store any event whose request.resource.group is in this list.
     groups:
       - "v2.edp.epam.com"
-    # Store events matching a specific group+resource.
+    # -- Store events matching a specific group+resource.
     groupResources:
       - group: "tekton.dev"
         resource: "pipelineruns"
-  # Subresource policy: spec-level only by default. status/scale churn is dropped unless the
+  # -- Subresource policy: spec-level only by default. status/scale churn is dropped unless the
   # subresource name is listed here (and a matching <resource>/<sub> webhook rule is added).
   includeSubresources: []
-  # Restrict which namespaces are audited, by name. Empty (default) = all namespaces. When set,
-  # the apiserver skips the webhook call entirely for every other namespace (cheaper than
+  # -- Restrict which namespaces are audited, by name. Empty (default) = all namespaces. When
+  # set, the apiserver skips the webhook call entirely for every other namespace (cheaper than
   # filtering downstream) — relies on the apiserver's automatic kubernetes.io/metadata.name
   # namespace label (k8s >=1.21).
   namespaces: []
-  # Object body capture level: "metadata" (default; bounds size/PII) or "full".
+  # -- Object body capture level: "metadata" (default; bounds size/PII) or "full".
   level: metadata
-  # Store the whole raw AdmissionReview payload for replay fidelity (off by default).
+  # -- Store the whole raw AdmissionReview payload for replay fidelity (off by default).
   storeRaw: false
 
 db:
-  # Provisioning mode — choose how PostgreSQL is supplied:
+  # -- Provisioning mode — choose how PostgreSQL is supplied:
   #   external — bring your own DB (nothing is provisioned; set db.host + db.owner.secretName)
   #   pgo      — provision a Crunchydata PostgresCluster (requires the postgres-operator add-on)
   #   simple   — provision a single plain PostgreSQL Deployment (dev / small installs)
   mode: external
 
-  # Logical database. For pgo/simple the chart provisions this DB; host/port default to the
+  # -- Logical database. For pgo/simple the chart provisions this DB; host/port default to the
   # provisioned instance and rarely need overriding. For external, set host (name/port too).
-  host: ""            # required for external
+  # required for external
+  host: ""
   port: 5432
   name: krci-audit
   sslmode: disable
 
-  # Schema-owner role used by the migration Job (creates/owns the schema). Keys default to
-  # user/password (matches Crunchydata pguser Secrets and the simple-mode Secret).
+  # -- All DB credentials are a prerequisite: create the Secret(s) yourself before installing
+  # (e.g. `kubectl create secret generic ...`, or enable `eso` below). The chart only ever
+  # reads them.
+  #
+  # Default (secretName unset): a single pre-created Secret named <release>-db-access with
+  # keys db-owner-username, db-owner-password (simple mode only), writer-password,
+  # reader-password (only if api.enabled).
+  #
+  # secretName overrides let owner/writer/reader each point at their own existing Secret with
+  # custom key names instead (owner.userKey/passwordKey, writer.passwordKey, reader.passwordKey).
+  # pgo mode ignores owner.secretName: it reads the operator's own pguser Secret (keys
+  # user/password).
   owner:
-    secretName: ""    # external only; pgo/simple derive it automatically
+    # -- if not defined: <release>-db-access (simple mode); required for external
+    secretName: ""
     userKey: user
     passwordKey: password
-    password: ""      # simple mode only: inline owner password (dev); empty ⇒ generated + kept
 
-  # Least-privilege writer (audit_writer) used by Vector. Its LOGIN password is applied by the
-  # migration Job. Provide a password (or an existing Secret); if neither is set the chart
-  # generates one and preserves it across upgrades.
   writer:
-    secretName: ""    # if set, read the password from here (key = writer.passwordKey)
+    # -- if not defined: <release>-db-access
+    secretName: ""
     passwordKey: password
-    password: ""      # inline (dev only); empty ⇒ generated + kept
 
-  # Least-privilege reader (audit_reader, SELECT-only) used by the read API. Same lifecycle as
-  # writer: the migration Job applies its LOGIN password. Only used when api.enabled.
   reader:
-    secretName: ""    # if set, read the password from here (key = reader.passwordKey)
+    # -- if not defined: <release>-db-access
+    secretName: ""
     passwordKey: password
-    password: ""      # inline (dev only); empty ⇒ generated + kept
 
-  # pgo mode (Crunchydata postgres-operator). Provisions a PostgresCluster + owner user.
+  # -- pgo mode (Crunchydata postgres-operator). Provisions a PostgresCluster + owner user.
   pgo:
     postgresVersion: 16
     image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi8-16.4-0
@@ -122,11 +130,12 @@ db:
       image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.51-0
       storage: 2Gi
 
-  # simple mode. A single PostgreSQL Deployment (no HA, no backups) — suitable for dev.
+  # -- simple mode. A single PostgreSQL Deployment (no HA, no backups) — suitable for dev.
   simple:
     image: postgres:16-alpine
     storage: 2Gi
-    persistence: true   # false ⇒ emptyDir (ephemeral)
+    # -- false ⇒ emptyDir (ephemeral)
+    persistence: true
     resources:
       requests:
         cpu: "50m"
@@ -135,16 +144,29 @@ db:
         cpu: "1"
         memory: "512Mi"
 
-# TLS serving cert for the webhook, cert-manager-managed. The webhook's caBundle is injected
+# -- External Secrets Operator (AWS only): populates the <release>-db-access Secret (see db.*
+# above) from an AWS Parameter Store JSON value at secretPath containing whichever of
+# db-owner-username/db-owner-password/writer-password/reader-password apply to your db.mode.
+eso:
+  enabled: false
+  apiVersion: "external-secrets.io/v1"
+  # -- required when enabled: AWS Parameter Store path to the JSON value
+  secretPath: ""
+  aws:
+    region: ""
+    # -- IRSA role ARN, required when enabled
+    roleArn: ""
+
+# -- TLS serving cert for the webhook, cert-manager-managed. The webhook's caBundle is injected
 # by cert-manager via inject-ca-from.
 tls:
   issuerRef:
     name: krci-audit-selfsigned
     kind: Issuer
-  # Create a self-signed Issuer in this namespace. Set false to use an existing issuer.
+  # -- Create a self-signed Issuer in this namespace. Set false to use an existing issuer.
   createSelfSignedIssuer: true
 
-# Read-only audit API (initiator lookup + audit-events query). Runs as a separate Deployment
+# -- Read-only audit API (initiator lookup + audit-events query). Runs as a separate Deployment
 # and connects to PostgreSQL as the least-privilege audit_reader role, so it can never mutate
 # the trail. Consumers reach it by in-cluster DNS at <release>-api.<namespace>:<api.port>.
 api:
@@ -159,7 +181,7 @@ api:
       cpu: "500m"
       memory: "128Mi"
 
-# Schema migration Job (Helm hook on install/upgrade).
+# -- Schema migration Job (Helm hook on install/upgrade).
 migration:
   enabled: true
 
