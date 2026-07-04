@@ -57,11 +57,12 @@ func main() {
 	}
 
 	r := chi.NewMux()
+	// Must run before the request logger, so probes short-circuit here without being logged.
+	r.Use(middleware.Heartbeat("/healthz"))
 	r.Use(middleware.RequestID)
 	r.Use(httplog.RequestLogger(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
-	r.Use(middleware.Heartbeat("/healthz"))
 
 	server := &http.Server{
 		Handler:           api.HandlerFromMux(api.BuildHandler(pool), r),
@@ -94,7 +95,7 @@ func initLogger() *httplog.Logger {
 		LogLevel:        slog.LevelInfo,
 		Concise:         true,
 		TimeFieldFormat: time.RFC3339,
-		QuietDownRoutes: []string{"/", "/healthz"},
+		QuietDownRoutes: []string{"/"},
 		QuietDownPeriod: 10 * time.Second,
 		SourceFieldName: "source",
 	})
