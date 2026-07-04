@@ -60,6 +60,11 @@ capture:
   # Subresource policy: spec-level only by default. status/scale churn is dropped unless the
   # subresource name is listed here (and a matching <resource>/<sub> webhook rule is added).
   includeSubresources: []
+  # Restrict which namespaces are audited, by name. Empty (default) = all namespaces. When set,
+  # the apiserver skips the webhook call entirely for every other namespace (cheaper than
+  # filtering downstream) — relies on the apiserver's automatic kubernetes.io/metadata.name
+  # namespace label (k8s >=1.21).
+  namespaces: []
   # Object body capture level: "metadata" (default; bounds size/PII) or "full".
   level: metadata
   # Store the whole raw AdmissionReview payload for replay fidelity (off by default).

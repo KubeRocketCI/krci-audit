@@ -15,6 +15,13 @@ webhooks:
     timeoutSeconds: {{ .Values.capture.timeoutSeconds }}
     sideEffects: None
     admissionReviewVersions: ["v1"]
+    {{- if .Values.capture.namespaces }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: {{ toYaml .Values.capture.namespaces | nindent 12 }}
+    {{- end }}
     clientConfig:
       service:
         name: {{ $full }}
