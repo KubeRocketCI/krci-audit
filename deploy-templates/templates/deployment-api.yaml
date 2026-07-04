@@ -64,7 +64,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "krci-audit.readerSecretName" . }}
-                  key: {{ .Values.db.reader.passwordKey }}
+                  key: {{ include "krci-audit.readerPasswordKey" . }}
             - name: PORT
               value: {{ .Values.api.port | quote }}
           readinessProbe:

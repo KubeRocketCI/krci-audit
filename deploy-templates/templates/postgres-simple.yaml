@@ -1,20 +1,6 @@
 {{- if eq .Values.db.mode "simple" }}
 {{- $name := printf "%s-db" (include "krci-audit.fullname" .) -}}
-{{- $pw := include "krci-audit.persistedPassword" (dict "root" . "secretName" $name "key" .Values.db.owner.passwordKey "explicit" .Values.db.owner.password) -}}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ $name }}
-  labels:
-    {{- include "krci-audit.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/resource-policy": keep
-type: Opaque
-stringData:
-  {{ .Values.db.owner.userKey }}: {{ .Values.db.name | quote }}
-  {{ .Values.db.owner.passwordKey }}: {{ $pw | quote }}
-  dbname: {{ .Values.db.name | quote }}
----
+{{- $owner := include "krci-audit.ownerSecretName" . -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -79,13 +65,13 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ $name }}
-                  key: {{ .Values.db.owner.userKey }}
+                  name: {{ $owner }}
+                  key: {{ include "krci-audit.ownerUserKey" . }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $name }}
-                  key: {{ .Values.db.owner.passwordKey }}
+                  name: {{ $owner }}
+                  key: {{ include "krci-audit.ownerPasswordKey" . }}
             - name: POSTGRES_DB
               value: {{ .Values.db.name | quote }}
             - name: PGDATA

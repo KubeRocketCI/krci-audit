@@ -105,41 +105,49 @@ The audit_writer role/password is chart-managed in all modes (the migration Job 
 {{- end -}}
 {{- end }}
 
-{{/* Secret holding the schema-owner user/password (keys: user, password). */}}
+{{/*
+Single chart-managed Secret (<release>-db-access) holding whichever of the owner/writer/reader
+credentials aren't pointed at an externally-managed Secret. Keys: db-owner-username,
+db-owner-password (simple mode only), writer-password, reader-password.
+*/}}
+{{- define "krci-audit.dbAccessSecretName" -}}
+{{- printf "%s-db-access" (include "krci-audit.fullname" .) -}}
+{{- end }}
+
+{{/* Secret holding the schema-owner user/password. */}}
 {{- define "krci-audit.ownerSecretName" -}}
 {{- if eq .Values.db.mode "pgo" -}}
 {{- printf "%s-pguser-%s" (include "krci-audit.pgoClusterName" .) (include "krci-audit.pgoClusterName" .) -}}
 {{- else if eq .Values.db.mode "simple" -}}
-{{- printf "%s-db" (include "krci-audit.fullname" .) -}}
+{{- include "krci-audit.dbAccessSecretName" . -}}
 {{- else -}}
 {{- required "db.owner.secretName is required when db.mode=external" .Values.db.owner.secretName -}}
 {{- end -}}
 {{- end }}
 
-{{/* Secret holding the audit_writer password (key: password). Chart-created unless provided. */}}
+{{- define "krci-audit.ownerUserKey" -}}
+{{- if eq .Values.db.mode "simple" -}}db-owner-username{{- else -}}{{ .Values.db.owner.userKey }}{{- end -}}
+{{- end }}
+
+{{- define "krci-audit.ownerPasswordKey" -}}
+{{- if eq .Values.db.mode "simple" -}}db-owner-password{{- else -}}{{ .Values.db.owner.passwordKey }}{{- end -}}
+{{- end }}
+
+{{/* Secret holding the audit_writer password. Chart-created (dbAccessSecretName) unless provided. */}}
 {{- define "krci-audit.writerSecretName" -}}
-{{- default (printf "%s-writer" (include "krci-audit.fullname" .)) .Values.db.writer.secretName -}}
+{{- default (include "krci-audit.dbAccessSecretName" .) .Values.db.writer.secretName -}}
 {{- end }}
 
-{{/* Secret holding the audit_reader password (key: password). Chart-created unless provided. */}}
+{{- define "krci-audit.writerPasswordKey" -}}
+{{- if .Values.db.writer.secretName -}}{{ .Values.db.writer.passwordKey }}{{- else -}}writer-password{{- end -}}
+{{- end }}
+
+{{/* Secret holding the audit_reader password. Chart-created (dbAccessSecretName) unless provided. */}}
 {{- define "krci-audit.readerSecretName" -}}
-{{- default (printf "%s-reader" (include "krci-audit.fullname" .)) .Values.db.reader.secretName -}}
+{{- default (include "krci-audit.dbAccessSecretName" .) .Values.db.reader.secretName -}}
 {{- end }}
 
-{{/*
-Preserve a chart-managed password across upgrades: prefer an explicit value, then the
-already-installed Secret's key, then a freshly generated one.
-Args (dict): root (.), secretName, key, explicit.
-*/}}
-{{- define "krci-audit.persistedPassword" -}}
-{{- if .explicit -}}
-{{- .explicit -}}
-{{- else -}}
-{{-   $existing := lookup "v1" "Secret" .root.Release.Namespace .secretName -}}
-{{-   if and $existing $existing.data (index $existing.data .key) -}}
-{{-     index $existing.data .key | b64dec -}}
-{{-   else -}}
-{{-     randAlphaNum 24 -}}
-{{-   end -}}
-{{- end -}}
+{{- define "krci-audit.readerPasswordKey" -}}
+{{- if .Values.db.reader.secretName -}}{{ .Values.db.reader.passwordKey }}{{- else -}}reader-password{{- end -}}
 {{- end }}
+
