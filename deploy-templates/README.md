@@ -78,10 +78,10 @@ A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit cap
 | db.writer.passwordKey | string | `"password"` |  |
 | db.writer.secretName | string | `""` |  |
 | fullnameOverride | string | `"krci-audit"` |  |
+| image.pullPolicy | string | `"IfNotPresent"` |  |
+| image.repository | string | `"epamedp/krci-audit"` |  |
+| image.tag | string | `""` |  |
 | imagePullSecrets | list | `[]` |  |
-| images.app.pullPolicy | string | `"IfNotPresent"` |  |
-| images.app.repository | string | `"epamedp/krci-audit"` |  |
-| images.app.tag | string | `""` |  |
 | images.kubeAuditRest.pullPolicy | string | `"IfNotPresent"` |  |
 | images.kubeAuditRest.repository | string | `"ghcr.io/richardoc/kube-audit-rest"` |  |
 | images.kubeAuditRest.tag | string | `"ad68f71978e8cd610b5b06769fab301cf9ee74d0-distroless@sha256:2444c1207156681c4ed04e7bb02662820c9bfb31b50e8fe5b0112b3f8f577d42"` |  |
