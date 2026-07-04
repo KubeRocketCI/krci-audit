@@ -1,6 +1,5 @@
 {{- if eq .Values.db.mode "simple" }}
 {{- $name := printf "%s-db" (include "krci-audit.fullname" .) -}}
-{{- $pw := include "krci-audit.persistedPassword" (dict "root" . "secretName" $name "key" .Values.db.owner.passwordKey "explicit" .Values.db.owner.password) -}}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -12,7 +11,9 @@ metadata:
 type: Opaque
 stringData:
   {{ .Values.db.owner.userKey }}: {{ .Values.db.name | quote }}
-  {{ .Values.db.owner.passwordKey }}: {{ $pw | quote }}
+  {{- if .Values.db.owner.password }}
+  {{ .Values.db.owner.passwordKey }}: {{ .Values.db.owner.password | quote }}
+  {{- end }}
   dbname: {{ .Values.db.name | quote }}
 ---
 apiVersion: v1

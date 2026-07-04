@@ -89,27 +89,29 @@ db:
   sslmode: disable
 
   # Schema-owner role used by the migration Job (creates/owns the schema). Keys default to
-  # user/password (matches Crunchydata pguser Secrets and the simple-mode Secret).
+  # user/password (matches Crunchydata pguser Secrets and the simple-mode Secret). Leaving
+  # password empty (simple mode) requires setting the password key on the chart-created Secret
+  # (<release>-db) yourself, e.g. via an external secret manager.
   owner:
     secretName: ""    # external only; pgo/simple derive it automatically
     userKey: user
     passwordKey: password
-    password: ""      # simple mode only: inline owner password (dev); empty ⇒ generated + kept
+    password: ""      # simple mode only: inline owner password (dev)
 
   # Least-privilege writer (audit_writer) used by Vector. Its LOGIN password is applied by the
-  # migration Job. Provide a password (or an existing Secret); if neither is set the chart
-  # generates one and preserves it across upgrades.
+  # migration Job. Provide a password, or point secretName at an existing externally-managed
+  # Secret. If both are empty, set the password key on the chart-created Secret yourself.
   writer:
     secretName: ""    # if set, read the password from here (key = writer.passwordKey)
     passwordKey: password
-    password: ""      # inline (dev only); empty ⇒ generated + kept
+    password: ""      # inline (dev only)
 
   # Least-privilege reader (audit_reader, SELECT-only) used by the read API. Same lifecycle as
   # writer: the migration Job applies its LOGIN password. Only used when api.enabled.
   reader:
     secretName: ""    # if set, read the password from here (key = reader.passwordKey)
     passwordKey: password
-    password: ""      # inline (dev only); empty ⇒ generated + kept
+    password: ""      # inline (dev only)
 
   # pgo mode (Crunchydata postgres-operator). Provisions a PostgresCluster + owner user.
   pgo:

@@ -126,20 +126,3 @@ The audit_writer role/password is chart-managed in all modes (the migration Job 
 {{- default (printf "%s-reader" (include "krci-audit.fullname" .)) .Values.db.reader.secretName -}}
 {{- end }}
 
-{{/*
-Preserve a chart-managed password across upgrades: prefer an explicit value, then the
-already-installed Secret's key, then a freshly generated one.
-Args (dict): root (.), secretName, key, explicit.
-*/}}
-{{- define "krci-audit.persistedPassword" -}}
-{{- if .explicit -}}
-{{- .explicit -}}
-{{- else -}}
-{{-   $existing := lookup "v1" "Secret" .root.Release.Namespace .secretName -}}
-{{-   if and $existing $existing.data (index $existing.data .key) -}}
-{{-     index $existing.data .key | b64dec -}}
-{{-   else -}}
-{{-     randAlphaNum 24 -}}
-{{-   end -}}
-{{- end -}}
-{{- end }}
