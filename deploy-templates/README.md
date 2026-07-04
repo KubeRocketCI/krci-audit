@@ -34,6 +34,7 @@ A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit cap
 | capture.filter.groups[0] | string | `"v2.edp.epam.com"` |  |
 | capture.includeSubresources | list | `[]` |  |
 | capture.level | string | `"metadata"` |  |
+| capture.namespaces | list | `[]` |  |
 | capture.operations[0] | string | `"CREATE"` |  |
 | capture.operations[1] | string | `"UPDATE"` |  |
 | capture.operations[2] | string | `"DELETE"` |  |
