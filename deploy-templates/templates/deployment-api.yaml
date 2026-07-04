@@ -41,8 +41,8 @@ spec:
         fsGroup: 65532
       containers:
         - name: krci-audit-api
-          image: "{{ .Values.images.app.repository }}:{{ .Values.images.app.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.images.app.pullPolicy }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/krci-audit-api"]
           ports:
             - name: http

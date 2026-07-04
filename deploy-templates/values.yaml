@@ -9,6 +9,16 @@ replicaCount: 1
 
 imagePullSecrets: []
 
+# krci-audit app image: one image ships both binaries (krci-audit-migrate, krci-audit-api);
+# the migration Job and read API Deployment select which one runs via `command`. Top-level
+# (not under `images`) because this is the image the CD Pipeline Operator builds and promotes
+# — it overrides Argo CD Helm parameters image.repository/image.tag/image.digest by convention
+# (see edp-cd-pipeline-operator), so this chart must expose them at this exact path.
+image:
+  repository: epamedp/krci-audit
+  tag: ""          # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
 images:
   # kube-audit-rest: the ValidatingWebhook that logs the raw AdmissionReview. Pin by digest.
   kubeAuditRest:
@@ -19,12 +29,6 @@ images:
   vector:
     repository: docker.io/timberio/vector
     tag: "0.56.0-distroless-static"
-    pullPolicy: IfNotPresent
-  # krci-audit app image: one image ships both binaries (krci-audit-migrate, krci-audit-api);
-  # the migration Job and read API Deployment select which one runs via `command`.
-  app:
-    repository: epamedp/krci-audit
-    tag: ""          # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
 
 # Both containers must share a uid: kube-audit-rest (lumberjack) writes the log file mode
