@@ -27,4 +27,8 @@ const (
 	// EnsurePartitionFn creates the monthly partition covering a timestamp if absent.
 	// It is the primitive a scheduled rotation job uses for create-ahead scheduling.
 	EnsurePartitionFn = "audit_ensure_partition"
+
+	// RotatePartitionsFn runs one scheduled rotation pass — create-ahead plus drop-expired of
+	// whole partitions past the retention window. The retention CronJob calls it as the owner.
+	RotatePartitionsFn = "audit_rotate_partitions"
 )

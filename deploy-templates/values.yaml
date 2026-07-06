@@ -185,6 +185,32 @@ api:
 migration:
   enabled: true
 
+# Scheduled partition retention. A CronJob calls audit_rotate_partitions() as the schema owner
+# to keep a create-ahead runway of monthly partitions and DROP whole partitions older than the
+# window. Whole-partition drops only — never row DELETE — so append-only integrity is preserved.
+retention:
+  # -- Enable the retention CronJob.
+  enabled: true
+  # -- Cron schedule (default: daily at 02:00).
+  schedule: "0 2 * * *"
+  # -- Months of history to keep (whole number; minimum 1). Retention is month-granular: expired
+  # data is dropped one whole monthly partition at a time, and a partition is removed only once
+  # every record in it has aged past this many months — so the current + boundary month persist
+  # until they fully elapse. The smallest effective window is ~1 month; sub-monthly windows
+  # (e.g. weeks) are not supported.
+  months: 12
+  # -- Future monthly partitions to pre-create ahead of the current month (ingestion runway).
+  createAheadMonths: 3
+  # -- Image providing the psql client. Match the PostgreSQL major version.
+  image: postgres:16-alpine
+  resources:
+    requests:
+      cpu: "10m"
+      memory: "32Mi"
+    limits:
+      cpu: "500m"
+      memory: "128Mi"
+
 serviceAccount:
   create: true
   name: ""
