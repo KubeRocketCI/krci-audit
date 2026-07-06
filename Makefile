@@ -7,6 +7,7 @@ LOCALBIN ?= ${CURRENT_DIR}/bin
 GOLANGCI_LINT_VERSION ?= v2.1.6
 HELMDOCS_VERSION ?= v1.14.2
 OAPICODEGEN_VERSION ?= v2.4.1
+GITCHGLOG_VERSION ?= v0.15.4
 
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
@@ -44,6 +45,20 @@ lint: golangci-lint ## run go lint
 .PHONY: lint-fix
 lint-fix: golangci-lint ## run go lint with --fix
 	${LOCALBIN}/golangci-lint run -v -c .golangci.yaml ./... --fix
+
+# use https://github.com/git-chglog/git-chglog/
+.PHONY: changelog
+changelog: git-chglog ## generate CHANGELOG.md (pass NEXT_RELEASE_TAG=X.Y.Z at release time)
+ifneq (${NEXT_RELEASE_TAG},)
+	${LOCALBIN}/git-chglog --next-tag v${NEXT_RELEASE_TAG} -o CHANGELOG.md
+else
+	${LOCALBIN}/git-chglog -o CHANGELOG.md
+endif
+
+.PHONY: git-chglog
+git-chglog: $(LOCALBIN)
+	@test -x $(LOCALBIN)/git-chglog || \
+		GOBIN=$(LOCALBIN) go install github.com/git-chglog/git-chglog/cmd/git-chglog@$(GITCHGLOG_VERSION)
 
 .PHONY: helm-lint
 helm-lint: ## lint the Helm chart
