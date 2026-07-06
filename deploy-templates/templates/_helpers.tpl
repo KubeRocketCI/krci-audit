@@ -86,8 +86,9 @@ Name of the serving-cert Secret (written by cert-manager, mounted by kube-audit-
 Database provisioning helpers. Three modes:
   external — bring your own PostgreSQL; owner creds in db.owner.secretName.
   pgo      — provision a Crunchydata PostgresCluster; owner creds in its pguser Secret.
-  simple   — provision a plain PostgreSQL Deployment; owner creds in a chart Secret.
-The audit_writer role/password is chart-managed in all modes (the migration Job sets it).
+  simple   — provision a plain PostgreSQL Deployment; owner creds in the prerequisite db-access Secret.
+DB credentials are always a prerequisite (pre-created Secret or ESO) — the chart only reads them.
+The migration Job then sets the audit_writer LOGIN password from that Secret in every mode.
 */}}
 
 {{- define "krci-audit.pgoClusterName" -}}
@@ -106,8 +107,9 @@ The audit_writer role/password is chart-managed in all modes (the migration Job 
 {{- end }}
 
 {{/*
-Single chart-managed Secret (<release>-db-access) holding whichever of the owner/writer/reader
-credentials aren't pointed at an externally-managed Secret. Keys: db-owner-username,
+Single prerequisite Secret (<release>-db-access) holding whichever of the owner/writer/reader
+credentials aren't pointed at an externally-managed Secret. Pre-create it (or populate it via
+ESO) before installing — the chart only reads it. Keys: db-owner-username,
 db-owner-password (simple mode only), writer-password, reader-password.
 */}}
 {{- define "krci-audit.dbAccessSecretName" -}}
@@ -133,7 +135,32 @@ db-owner-password (simple mode only), writer-password, reader-password.
 {{- if eq .Values.db.mode "simple" -}}db-owner-password{{- else -}}{{ .Values.db.owner.passwordKey }}{{- end -}}
 {{- end }}
 
-{{/* Secret holding the audit_writer password. Chart-created (dbAccessSecretName) unless provided. */}}
+{{/*
+Owner DB connection env vars sourced from the schema-owner Secret. Shared by the migration Job
+and the retention CronJob — both connect as the owner, so the wiring lives in one place.
+*/}}
+{{- define "krci-audit.ownerDBEnv" -}}
+- name: PGHOST
+  value: {{ include "krci-audit.dbHost" . | quote }}
+- name: PGPORT
+  value: {{ .Values.db.port | quote }}
+- name: PGDATABASE
+  value: {{ .Values.db.name | quote }}
+- name: PGSSLMODE
+  value: {{ .Values.db.sslmode | quote }}
+- name: PGUSER
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "krci-audit.ownerSecretName" . }}
+      key: {{ include "krci-audit.ownerUserKey" . }}
+- name: PGPASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "krci-audit.ownerSecretName" . }}
+      key: {{ include "krci-audit.ownerPasswordKey" . }}
+{{- end }}
+
+{{/* Secret holding the audit_writer password. Prerequisite db-access Secret unless overridden. */}}
 {{- define "krci-audit.writerSecretName" -}}
 {{- default (include "krci-audit.dbAccessSecretName" .) .Values.db.writer.secretName -}}
 {{- end }}
@@ -142,7 +169,7 @@ db-owner-password (simple mode only), writer-password, reader-password.
 {{- if .Values.db.writer.secretName -}}{{ .Values.db.writer.passwordKey }}{{- else -}}writer-password{{- end -}}
 {{- end }}
 
-{{/* Secret holding the audit_reader password. Chart-created (dbAccessSecretName) unless provided. */}}
+{{/* Secret holding the audit_reader password. Prerequisite db-access Secret unless overridden. */}}
 {{- define "krci-audit.readerSecretName" -}}
 {{- default (include "krci-audit.dbAccessSecretName" .) .Values.db.reader.secretName -}}
 {{- end }}

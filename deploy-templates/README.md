@@ -69,6 +69,15 @@ A Helm chart for krci-audit — platform-agnostic Kubernetes admission audit cap
 | resources.vector.limits.memory | string | `"256Mi"` |  |
 | resources.vector.requests.cpu | string | `"2m"` |  |
 | resources.vector.requests.memory | string | `"10Mi"` |  |
+| retention.createAheadMonths | int | `3` | Future monthly partitions to pre-create ahead of the current month (ingestion runway). |
+| retention.enabled | bool | `true` | Enable the retention CronJob. |
+| retention.image | string | `"postgres:16-alpine"` | Image providing the psql client. Match the PostgreSQL major version. |
+| retention.months | int | `12` | Months of history to keep (whole number; minimum 1). Retention is month-granular: expired data is dropped one whole monthly partition at a time, and a partition is removed only once every record in it has aged past this many months — so the current + boundary month persist until they fully elapse. The smallest effective window is ~1 month; sub-monthly windows (e.g. weeks) are not supported. |
+| retention.resources.limits.cpu | string | `"500m"` |  |
+| retention.resources.limits.memory | string | `"128Mi"` |  |
+| retention.resources.requests.cpu | string | `"10m"` |  |
+| retention.resources.requests.memory | string | `"32Mi"` |  |
+| retention.schedule | string | `"0 2 * * *"` | Cron schedule (default: daily at 02:00). |
 | serviceAccount.create | bool | `true` |  |
 | serviceAccount.name | string | `""` |  |
 | sharedUID | int | `255999` | Both containers must share a uid: kube-audit-rest (lumberjack) writes the log file mode 0600 and the Vector sidecar reads it from the shared volume. |

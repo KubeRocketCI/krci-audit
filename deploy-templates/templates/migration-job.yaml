@@ -62,24 +62,7 @@ spec:
             capabilities:
               drop: [ALL]
           env:
-            - name: PGHOST
-              value: {{ include "krci-audit.dbHost" . | quote }}
-            - name: PGPORT
-              value: {{ .Values.db.port | quote }}
-            - name: PGDATABASE
-              value: {{ .Values.db.name | quote }}
-            - name: PGSSLMODE
-              value: {{ .Values.db.sslmode | quote }}
-            - name: PGUSER
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $owner }}
-                  key: {{ include "krci-audit.ownerUserKey" . }}
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $owner }}
-                  key: {{ include "krci-audit.ownerPasswordKey" . }}
+            {{- include "krci-audit.ownerDBEnv" . | nindent 12 }}
             # Applied to the audit_writer role so Vector can log in (all modes).
             - name: AUDIT_WRITER_PASSWORD
               valueFrom:

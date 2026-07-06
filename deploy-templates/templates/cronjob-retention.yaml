@@ -1,0 +1,59 @@
+{{- if .Values.retention.enabled }}
+{{- $full := include "krci-audit.fullname" . -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $full }}-retention
+  labels:
+    {{- include "krci-audit.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.retention.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            {{- include "krci-audit.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "krci-audit.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: rotate
+              image: {{ .Values.retention.image | quote }}
+              command: ["psql"]
+              # Owner-run rotation: audit_rotate_partitions does the create-ahead + drop-expired.
+              args:
+                - "-v"
+                - "ON_ERROR_STOP=1"
+                - "-c"
+                - "SELECT * FROM audit_rotate_partitions({{ .Values.retention.months | int }}, {{ .Values.retention.createAheadMonths | int }})"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                {{- toYaml .Values.retention.resources | nindent 16 }}
+              env:
+                # HOME must be writable under readOnlyRootFilesystem.
+                - name: HOME
+                  value: /tmp
+                # Owner credentials: partition CREATE/DROP requires table ownership.
+                {{- include "krci-audit.ownerDBEnv" . | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
+{{- end }}

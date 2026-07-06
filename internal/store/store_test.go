@@ -337,3 +337,49 @@ func TestReaderLoginPassword(t *testing.T) {
 	require.Error(t, err, "audit_reader must NOT DELETE")
 	require.Contains(t, strings.ToLower(err.Error()), "permission denied")
 }
+
+// audit_rotate_partitions (migration 000004) performs one scheduled pass: create-ahead of the
+// runway plus drop-expired of whole partitions past the retention window. Records inside the
+// window — including the boundary month — are never dropped, and append-only survives on the
+// retained partitions.
+func TestRotatePartitions(t *testing.T) {
+	conn, _ := setup(t)
+	ctx := context.Background()
+
+	now := time.Now()
+	insertEvent(t, conn, "evt-5y", now.AddDate(-5, 0, 0), false)
+	insertEvent(t, conn, "evt-3m", now.AddDate(0, -3, 0), false)
+	insertEvent(t, conn, "evt-1m", now.AddDate(0, -1, 0), false)
+	insertEvent(t, conn, "evt-now", now, false)
+
+	_, err := conn.Exec(ctx, `SELECT * FROM audit_rotate_partitions($1, $2)`, 1, 3)
+	require.NoError(t, err)
+
+	count := func(uid string) int {
+		var n int
+		require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE event_uid = $1`, uid).Scan(&n))
+		return n
+	}
+	require.Equal(t, 0, count("evt-5y"), "five-year-old partition dropped")
+	require.Equal(t, 0, count("evt-3m"), "three-month-old partition dropped")
+	require.Equal(t, 1, count("evt-1m"), "boundary month retained (record still inside the window)")
+	require.Equal(t, 1, count("evt-now"), "current partition retained")
+
+	var ahead bool
+	require.NoError(t, conn.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = 'audit_events_' || to_char(date_trunc('month', now()) + interval '3 months', 'YYYYMM'))`,
+	).Scan(&ahead))
+	require.True(t, ahead, "create-ahead extended the runway three months out")
+
+	// Append-only survives on the retained partitions.
+	_, err = conn.Exec(ctx, "SET ROLE "+store.WriterRole)
+	require.NoError(t, err)
+	_, err = conn.Exec(ctx, `DELETE FROM audit_events WHERE event_uid = 'evt-now'`)
+	require.Error(t, err)
+	require.Contains(t, strings.ToLower(err.Error()), "permission denied")
+	_, _ = conn.Exec(ctx, "RESET ROLE")
+
+	// Invalid retention is rejected before any drop happens.
+	_, err = conn.Exec(ctx, `SELECT * FROM audit_rotate_partitions($1, $2)`, 0, 3)
+	require.Error(t, err, "retention_months < 1 is rejected")
+}
