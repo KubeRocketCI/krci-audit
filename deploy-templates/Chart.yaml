@@ -3,8 +3,8 @@ description: A Helm chart for krci-audit — platform-agnostic Kubernetes admiss
 home: https://docs.kuberocketci.io/
 name: krci-audit
 type: application
-version: 0.1.0-SNAPSHOT
-appVersion: 0.1.0-SNAPSHOT
+version: 0.2.0-SNAPSHOT
+appVersion: 0.2.0-SNAPSHOT
 icon: https://docs.kuberocketci.io/img/logo.svg
 keywords:
   - edp
@@ -18,7 +18,19 @@ maintainers:
 sources:
   - https://github.com/KubeRocketCI/krci-audit
 annotations:
+  artifacthub.io/category: security
   artifacthub.io/license: Apache-2.0
+  artifacthub.io/images: |
+    - name: krci-audit
+      image: epamedp/krci-audit:0.1.0
+    - name: kube-audit-rest
+      image: ghcr.io/richardoc/kube-audit-rest:ad68f71978e8cd610b5b06769fab301cf9ee74d0-distroless@sha256:2444c1207156681c4ed04e7bb02662820c9bfb31b50e8fe5b0112b3f8f577d42
+    - name: vector
+      image: docker.io/timberio/vector:0.56.0-distroless-static
+    - name: postgres
+      image: postgres:16-alpine
   artifacthub.io/links: |
     - name: KubeRocketCI Documentation
       url: https://docs.kuberocketci.io
+    - name: EPAM SolutionHub
+      url: https://solutionshub.epam.com/solution/kuberocketci
