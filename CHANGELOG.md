@@ -6,7 +6,7 @@
 ## v0.1.0 - 2026-07-06
 ### Features
 
-- add release and codeql workflows
+- add release pipeline with changelog generation
 - add scheduled partition rotation and retention CronJob
 - add optional namespace scoping to admission webhook
 - add krci-audit read-only HTTP API
