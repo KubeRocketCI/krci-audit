@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/KubeRocketCI/krci-audit/internal/services/events"
+	"github.com/KubeRocketCI/krci-audit/internal/services/facets"
 	"github.com/KubeRocketCI/krci-audit/internal/services/initiator"
 )
 
@@ -16,13 +17,15 @@ var _ StrictServerInterface = (*Server)(nil)
 type Server struct {
 	initiatorHandler *InitiatorHandler
 	eventsHandler    *EventsHandler
+	facetsHandler    *FacetsHandler
 }
 
 // NewServer creates a Server delegating each capability to its handler.
-func NewServer(initiatorHandler *InitiatorHandler, eventsHandler *EventsHandler) *Server {
+func NewServer(initiatorHandler *InitiatorHandler, eventsHandler *EventsHandler, facetsHandler *FacetsHandler) *Server {
 	return &Server{
 		initiatorHandler: initiatorHandler,
 		eventsHandler:    eventsHandler,
+		facetsHandler:    facetsHandler,
 	}
 }
 
@@ -42,12 +45,21 @@ func (s *Server) ListAuditEvents(
 	return s.eventsHandler.ListAuditEvents(ctx, request)
 }
 
+// ListAuditFacets implements StrictServerInterface.
+func (s *Server) ListAuditFacets(
+	ctx context.Context,
+	request ListAuditFacetsRequestObject,
+) (ListAuditFacetsResponseObject, error) {
+	return s.facetsHandler.ListAuditFacets(ctx, request)
+}
+
 // BuildHandler wires the capability services (backed by the read pool, connected as
 // audit_reader) into their handlers and wraps them in the oapi-codegen strict handler.
 func BuildHandler(pool *pgxpool.Pool) ServerInterface {
 	server := NewServer(
 		NewInitiatorHandler(initiator.New(pool)),
 		NewEventsHandler(events.New(pool)),
+		NewFacetsHandler(facets.New(pool)),
 	)
 
 	return NewStrictHandlerWithOptions(server, []StrictMiddlewareFunc{}, StrictHTTPServerOptions{})

@@ -85,6 +85,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/audit/facets:
+    get:
+      summary: List distinct values for the given facet fields
+      description: >-
+        Returns distinct, sorted, non-null values per requested facet field, over the
+        dry-run-excluded event store. No counts, no time range — just the value sets used to
+        populate filter dropdowns. Defaults to all facet fields when none are requested. Each
+        field is capped at 50 distinct values; a field with more is returned as
+        truncated=true with an empty values list (never a partial list) so the client can
+        fall back to free-text input.
+      operationId: listAuditFacets
+      tags:
+        - Facets
+      parameters:
+        - $ref: '#/components/parameters/facetFieldsParam'
+      responses:
+        '200':
+          description: Distinct values per requested facet field.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditFacetsResponse'
+        '400':
+          description: An unknown facet field was requested.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   parameters:
     objectUidParam:
@@ -173,11 +208,27 @@ components:
       description: Page size (default 20, max 100).
       schema:
         type: integer
+    facetFieldsParam:
+      name: fields
+      in: query
+      required: false
+      explode: false
+      description: >-
+        The facet fields to return, comma-separated. Defaults to all facet fields
+        (namespace, kind, actor) when omitted.
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/FacetField'
   schemas:
     Operation:
       type: string
       enum: [CREATE, UPDATE, DELETE, CONNECT]
       description: The admission operation recorded on an event.
+    FacetField:
+      type: string
+      enum: [namespace, kind, actor]
+      description: A whitelisted, filterable field with a bounded set of distinct values.
     Initiator:
       type: object
       description: The CREATE actor of an object, or an empty result when never audited.
@@ -266,6 +317,37 @@ components:
       required:
         - data
         - pagination
+    Facet:
+      type: object
+      description: >-
+        The distinct values for one facet field, capped at 50. When more than 50 distinct
+        values exist, values is empty and truncated is true — the client should fall back to
+        free-text input rather than trust a partial dropdown.
+      properties:
+        values:
+          type: array
+          items:
+            type: string
+        truncated:
+          type: boolean
+          description: >-
+            True when more than the cap (50) distinct values exist; values is then empty and
+            the client should use free-text input.
+      required:
+        - values
+        - truncated
+    AuditFacetsResponse:
+      type: object
+      description: >-
+        Distinct, sorted, non-null values per requested facet field. Only the requested
+        fields are present; unrequested fields are omitted entirely.
+      properties:
+        namespace:
+          $ref: '#/components/schemas/Facet'
+        kind:
+          $ref: '#/components/schemas/Facet'
+        actor:
+          $ref: '#/components/schemas/Facet'
     Error:
       type: object
       properties:

@@ -16,6 +16,13 @@ import (
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 )
 
+// Defines values for FacetField.
+const (
+	Actor     FacetField = "actor"
+	Kind      FacetField = "kind"
+	Namespace FacetField = "namespace"
+)
+
 // Defines values for Operation.
 const (
 	CONNECT Operation = "CONNECT"
@@ -49,6 +56,18 @@ type AuditEventsResponse struct {
 	Pagination Pagination   `json:"pagination"`
 }
 
+// AuditFacetsResponse Distinct, sorted, non-null values per requested facet field. Only the requested fields are present; unrequested fields are omitted entirely.
+type AuditFacetsResponse struct {
+	// Actor The distinct values for one facet field, capped at 50. When more than 50 distinct values exist, values is empty and truncated is true — the client should fall back to free-text input rather than trust a partial dropdown.
+	Actor *Facet `json:"actor,omitempty"`
+
+	// Kind The distinct values for one facet field, capped at 50. When more than 50 distinct values exist, values is empty and truncated is true — the client should fall back to free-text input rather than trust a partial dropdown.
+	Kind *Facet `json:"kind,omitempty"`
+
+	// Namespace The distinct values for one facet field, capped at 50. When more than 50 distinct values exist, values is empty and truncated is true — the client should fall back to free-text input rather than trust a partial dropdown.
+	Namespace *Facet `json:"namespace,omitempty"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	// Code A short error code representing the type of error.
@@ -57,6 +76,16 @@ type Error struct {
 	// Message A human-readable message providing more details about the error.
 	Message string `json:"message"`
 }
+
+// Facet The distinct values for one facet field, capped at 50. When more than 50 distinct values exist, values is empty and truncated is true — the client should fall back to free-text input rather than trust a partial dropdown.
+type Facet struct {
+	// Truncated True when more than the cap (50) distinct values exist; values is then empty and the client should use free-text input.
+	Truncated bool     `json:"truncated"`
+	Values    []string `json:"values"`
+}
+
+// FacetField A whitelisted, filterable field with a bounded set of distinct values.
+type FacetField string
 
 // Initiator The CREATE actor of an object, or an empty result when never audited.
 type Initiator struct {
@@ -85,6 +114,9 @@ type Pagination struct {
 
 // ActorParam defines model for actorParam.
 type ActorParam = string
+
+// FacetFieldsParam defines model for facetFieldsParam.
+type FacetFieldsParam = []FacetField
 
 // FromParam defines model for fromParam.
 type FromParam = time.Time
@@ -158,6 +190,12 @@ type ListAuditEventsParams struct {
 	PerPage *PerPageParam `form:"perPage,omitempty" json:"perPage,omitempty"`
 }
 
+// ListAuditFacetsParams defines parameters for ListAuditFacets.
+type ListAuditFacetsParams struct {
+	// Fields The facet fields to return, comma-separated. Defaults to all facet fields (namespace, kind, actor) when omitted.
+	Fields *FacetFieldsParam `form:"fields,omitempty" json:"fields,omitempty"`
+}
+
 // GetInitiatorParams defines parameters for GetInitiator.
 type GetInitiatorParams struct {
 	// ObjectUid The object's metadata.uid (stable correlation key across its lifecycle).
@@ -178,6 +216,9 @@ type ServerInterface interface {
 	// Query audit events
 	// (GET /api/v1/audit/events)
 	ListAuditEvents(w http.ResponseWriter, r *http.Request, params ListAuditEventsParams)
+	// List distinct values for the given facet fields
+	// (GET /api/v1/audit/facets)
+	ListAuditFacets(w http.ResponseWriter, r *http.Request, params ListAuditFacetsParams)
 	// Resolve who created a Kubernetes object
 	// (GET /api/v1/audit/initiator)
 	GetInitiator(w http.ResponseWriter, r *http.Request, params GetInitiatorParams)
@@ -190,6 +231,12 @@ type Unimplemented struct{}
 // Query audit events
 // (GET /api/v1/audit/events)
 func (_ Unimplemented) ListAuditEvents(w http.ResponseWriter, r *http.Request, params ListAuditEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List distinct values for the given facet fields
+// (GET /api/v1/audit/facets)
+func (_ Unimplemented) ListAuditFacets(w http.ResponseWriter, r *http.Request, params ListAuditFacetsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -314,6 +361,33 @@ func (siw *ServerInterfaceWrapper) ListAuditEvents(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAuditEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAuditFacets operation middleware
+func (siw *ServerInterfaceWrapper) ListAuditFacets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAuditFacetsParams
+
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameter("form", false, false, "fields", r.URL.Query(), &params.Fields)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fields", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAuditFacets(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -491,6 +565,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/audit/events", wrapper.ListAuditEvents)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/audit/facets", wrapper.ListAuditFacets)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/audit/initiator", wrapper.GetInitiator)
 	})
 
@@ -526,6 +603,41 @@ func (response ListAuditEvents400JSONResponse) VisitListAuditEventsResponse(w ht
 type ListAuditEvents500JSONResponse Error
 
 func (response ListAuditEvents500JSONResponse) VisitListAuditEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAuditFacetsRequestObject struct {
+	Params ListAuditFacetsParams
+}
+
+type ListAuditFacetsResponseObject interface {
+	VisitListAuditFacetsResponse(w http.ResponseWriter) error
+}
+
+type ListAuditFacets200JSONResponse AuditFacetsResponse
+
+func (response ListAuditFacets200JSONResponse) VisitListAuditFacetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAuditFacets400JSONResponse Error
+
+func (response ListAuditFacets400JSONResponse) VisitListAuditFacetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAuditFacets500JSONResponse Error
+
+func (response ListAuditFacets500JSONResponse) VisitListAuditFacetsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -572,6 +684,9 @@ type StrictServerInterface interface {
 	// Query audit events
 	// (GET /api/v1/audit/events)
 	ListAuditEvents(ctx context.Context, request ListAuditEventsRequestObject) (ListAuditEventsResponseObject, error)
+	// List distinct values for the given facet fields
+	// (GET /api/v1/audit/facets)
+	ListAuditFacets(ctx context.Context, request ListAuditFacetsRequestObject) (ListAuditFacetsResponseObject, error)
 	// Resolve who created a Kubernetes object
 	// (GET /api/v1/audit/initiator)
 	GetInitiator(ctx context.Context, request GetInitiatorRequestObject) (GetInitiatorResponseObject, error)
@@ -625,6 +740,32 @@ func (sh *strictHandler) ListAuditEvents(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAuditEventsResponseObject); ok {
 		if err := validResponse.VisitListAuditEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAuditFacets operation middleware
+func (sh *strictHandler) ListAuditFacets(w http.ResponseWriter, r *http.Request, params ListAuditFacetsParams) {
+	var request ListAuditFacetsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAuditFacets(ctx, request.(ListAuditFacetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAuditFacets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAuditFacetsResponseObject); ok {
+		if err := validResponse.VisitListAuditFacetsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
