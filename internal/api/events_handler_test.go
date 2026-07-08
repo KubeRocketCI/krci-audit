@@ -135,6 +135,7 @@ func TestReadOnlySurfaceRejectsMutations(t *testing.T) {
 	srv := NewServer(
 		NewInitiatorHandler(&stubInitiator{}),
 		NewEventsHandler(&stubEvents{}),
+		NewFacetsHandler(&stubFacets{}),
 	)
 	router := HandlerFromMux(NewStrictHandlerWithOptions(srv, nil, StrictHTTPServerOptions{}), chi.NewMux())
 

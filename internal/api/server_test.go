@@ -17,7 +17,8 @@ import (
 func TestServerDelegatesToHandlers(t *testing.T) {
 	initiatorStub := &stubInitiator{res: initiator.Result{Found: true, Actor: "dev@x"}}
 	eventsStub := &stubEvents{total: 1}
-	srv := NewServer(NewInitiatorHandler(initiatorStub), NewEventsHandler(eventsStub))
+	facetsStub := &stubFacets{}
+	srv := NewServer(NewInitiatorHandler(initiatorStub), NewEventsHandler(eventsStub), NewFacetsHandler(facetsStub))
 
 	_, err := srv.GetInitiator(context.Background(), GetInitiatorRequestObject{
 		Params: GetInitiatorParams{ObjectUid: ptrTo("uid-1")},
@@ -28,4 +29,8 @@ func TestServerDelegatesToHandlers(t *testing.T) {
 	_, err = srv.ListAuditEvents(context.Background(), ListAuditEventsRequestObject{})
 	require.NoError(t, err)
 	require.Equal(t, 1, eventsStub.gotFilter.Page, "ListAuditEvents must delegate to the events handler")
+
+	_, err = srv.ListAuditFacets(context.Background(), ListAuditFacetsRequestObject{})
+	require.NoError(t, err)
+	require.True(t, facetsStub.called, "ListAuditFacets must delegate to the facets handler")
 }
