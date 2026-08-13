@@ -127,7 +127,7 @@ db:
     storage: 2Gi
     backups:
       enabled: true
-      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.51-0
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.52.1-1
       storage: 2Gi
 
   # -- simple mode. A single PostgreSQL Deployment (no HA, no backups) — suitable for dev.
