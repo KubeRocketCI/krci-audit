@@ -1,6 +1,25 @@
 <a name="unreleased"></a>
 ## [Unreleased]
 
+### Routine
+
+- Update current development version
+
+
+<a name="v0.2.0"></a>
+## [v0.2.0] - 2026-09-23
+### Features
+
+- Update pgbackrest default image version
+- add audit facets API for filter dropdown values
+
+### Routine
+
+- apply Dependabot version updates for Go modules and Actions
+- bump vulnerable dependencies flagged by Dependabot
+- configure Dependabot commit prefix to pass PR validation
+- Update current development version
+
 
 <a name="v0.1.0"></a>
 ## v0.1.0 - 2026-07-07
@@ -23,4 +42,5 @@
 - Align CI pipelines
 
 
-[Unreleased]: https://github.com/KubeRocketCI/krci-audit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/KubeRocketCI/krci-audit/compare/v0.2.0...HEAD
+[v0.2.0]: https://github.com/KubeRocketCI/krci-audit/compare/v0.1.0...v0.2.0
