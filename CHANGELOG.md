@@ -3,7 +3,7 @@
 
 
 <a name="v0.2.0"></a>
-## v0.2.0 - 2026-09-16
+## v0.2.0 - 2026-09-23
 ### Features
 
 - Update pgbackrest default image version
