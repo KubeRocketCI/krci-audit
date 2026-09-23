@@ -2,10 +2,12 @@
 ## [Unreleased]
 
 
-<a name="v0.1.0"></a>
-## v0.1.0 - 2026-07-07
+<a name="v0.2.0"></a>
+## v0.2.0 - 2026-09-16
 ### Features
 
+- Update pgbackrest default image version
+- add audit facets API for filter dropdown values
 - add release pipeline with changelog generation
 - add scheduled partition rotation and retention CronJob
 - add optional namespace scoping to admission webhook
@@ -20,7 +22,11 @@
 
 ### Routine
 
+- apply Dependabot version updates for Go modules and Actions
+- bump vulnerable dependencies flagged by Dependabot
+- configure Dependabot commit prefix to pass PR validation
+- Update current development version
 - Align CI pipelines
 
 
-[Unreleased]: https://github.com/KubeRocketCI/krci-audit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/KubeRocketCI/krci-audit/compare/v0.2.0...HEAD
