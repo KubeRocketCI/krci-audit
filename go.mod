@@ -6,7 +6,7 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/golang-migrate/migrate/v4 v4.20.1
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/oapi-codegen/nullable v1.2.0
 	github.com/oapi-codegen/runtime v1.8.0
 	github.com/stretchr/testify v1.12.1
